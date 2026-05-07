@@ -1,0 +1,35 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "smoke": "node scripts/smoke.js",
+    "test:smoke": "node scripts/smoke.js",
+    "test:import": "node scripts/import-regression.js",
+    "test:security": "node scripts/rate-limit-regression.js",
+    "test:college": "node scripts/college-normalization-regression.js",
+    "test:product": "node scripts/product-optimizations-regression.js",
+    "test": "npm run test:smoke && npm run test:import && npm run test:security && npm run test:college && npm run test:product"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "@fastify/multipart": "^10.0.0",
+    "@fastify/rate-limit": "^10.3.0",
+    "bcrypt": "^6.0.0",
+    "dotenv": "^17.4.1",
+    "exceljs": "3.4.0",
+    "fastify": "^5.8.5",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.20.0",
+    "redis": "^5.11.0"
+  },
+  "overrides": {
+    "fast-csv": "^4.3.6",
+    "tmp": "^0.2.4"
+  }
+}

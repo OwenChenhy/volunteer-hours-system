@@ -1,0 +1,43 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+.vite/
+.cache/
+.next/
+
+# Runtime volumes and backups
+postgres-data/
+redis-data/
+backups/
+tmp/
+temp/
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+.supabase-backup.env
+
+# Source spreadsheets, generated imports, and database dumps
+2025-2026志愿者时长库*/
+import-output/
+*.xlsx
+*.xls
+*.csv
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.backup
+
+# Archives, logs, and caches
+*.zip
+*.tgz
+*.tar
+*.gz
+*.7z
+*.rar
+*.log
+__pycache__/
+*.pyc
