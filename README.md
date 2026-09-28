@@ -1,85 +1,46 @@
-# 志愿时长管理系统部署文档
+# 志愿时长管理系统
 
-## 1. 环境准备
-由于我们使用了 Docker Compose 编排前后端和服务，您只需要在一台 Linux 服务器上安装以下环境：
-- Docker (>= 20.10)
-- Docker Compose (V2 推荐)
+重庆理工大学志愿服务时长的公开查询、管理员复核与活动管理系统。生产站点：
+[查询页](https://zysc.hanyao.me/query/) · [管理后台](https://zysc.hanyao.me/admin/) · [状态页](https://zysc.hanyao.me/status/)。
 
-建议服务器配置：
-- CPU：2 核
-- 内存：4 GB 或以上
+## 部署结构
 
-## 2. 代码准备与配置
-将本项目的全部代码上传至服务器某目录下（例如 `/opt/volunteer-system`）。
+- Docker Compose：PostgreSQL、Redis、Fastify 后端、Nginx 静态站点与 API 代理。
+- 宿主 Nginx：Cloudflare 后的 HTTPS 入口，将请求代理到 `127.0.0.1:8080`。
+- 本地主库：`postgres-data/`；异地副本：Supabase Database；异地备份：Supabase Storage 私有 bucket。
+- 原始公示 Excel 只保存在服务器的只读导入目录和本地私人归档，不进入 Git。
 
-在根目录下创建 `.env` 文件（或修改 `backend/.env`），包含关键配置：
-```bash
-# 生成随机 JWT 密钥：
-# openssl rand -base64 64
-JWT_SECRET=在这里填入你生成的极长随机字符串
-```
+## 首次部署
 
-> **注意**：数据库、Redis等配置已经默认写在了 `docker-compose.yml` 中，如果需要对外暴露端口，可自行修改。
+需要 Docker Compose V2、Node.js、Python 3、Nginx 和 Certbot。服务器工作目录为 `/opt/volunteer-system`。
 
-## 3. 构建前端资源
-在启动 Docker Compose 前，需要先构建前端静态文件。如果在服务器上安装了 Node.js，可以在服务器上执行；否则在本地执行后一并上传。
+1. 从本仓库克隆代码，在服务器本地创建权限为 `600` 的 `.env`，设置 `DB_PASSWORD`、`JWT_SECRET`、`SUPABASE_URL`、`SUPABASE_SERVICE_ROLE_KEY`、`SUPABASE_BACKUP_BUCKET` 和 `SUPABASE_BACKUP_PREFIX`。不要把密钥写入仓库。
+2. 构建两个前端：`npm --prefix frontend-query ci && npm --prefix frontend-query run build`；`npm --prefix frontend-admin ci && npm --prefix frontend-admin run build`。
+3. 启动服务并迁移：`docker compose up -d --build`，然后 `sh scripts/migrate-db.sh`。
+4. 把公示 Excel 放入对应的 `2025-2026志愿者时长库3月公示/`、`2025-2026志愿者时长库4月公示/`、`2025-2026志愿者时长库5月/`，仅授权 root 读取。容器只读挂载这些目录。
+5. 将 `nginx/origin-zysc.conf` 安装为宿主站点配置，将 `nginx/cloudflare-realip.conf` 安装到 `/etc/nginx/cloudflare-realip.conf`；取得 `zysc.hanyao.me` 的有效证书后 `nginx -t && systemctl reload nginx`。
+6. 将 `deploy/volunteer-backup.service` 和 `.timer` 安装到 `/etc/systemd/system/`，运行 `systemctl daemon-reload && systemctl enable --now volunteer-backup.timer`。
 
-**构建查询页前端**:
-```bash
-cd frontend-query
-npm install
-npm run build
-```
+本仓库不含生产数据库、原始 Excel、管理员密码或 Supabase 密钥。初次建库后应通过受控方式创建管理员，不能使用示例密码。
 
-**构建管理后台前端**:
-```bash
-cd ../frontend-admin
-npm install
-npm run build
-```
-执行完毕后，`frontend-query/dist` 和 `frontend-admin/dist` 目录将会生成。`docker-compose.yml` 中配置了将这两个目录挂载到 Nginx 容器中。
+## 验证与恢复
 
-## 4. 启动服务
-回到项目根目录（包含 `docker-compose.yml` 的目录），执行以下命令：
-
-```bash
-docker compose up -d --build
-```
-
-系统会自动拉取所需镜像（PostgreSQL, Redis, Nginx, Node），构建后端镜像并启动。
-
-### 检查服务状态
 ```bash
 docker compose ps
-docker compose logs -f backend
+npm --prefix backend ci
+npm --prefix backend test
+docker compose exec -T backend node scripts/recovery-smoke.js
+systemctl start volunteer-backup.service
+systemctl show volunteer-backup.service -p Result -p ExecMainStatus
 ```
 
-## 5. 数据库初始化与管理员账号
-由于 `backend/src/db/migrations/001_init.sql` 被挂载到 PostgreSQL 的 `/docker-entrypoint-initdb.d`，首次启动时数据库会自动建表。
+`recovery-smoke.js` 会进行一次真实公开查询，成功查询计数会增加。数据库恢复是破坏性操作，必须先保存当前快照，再显式执行：
 
-**（如果您使用 Supabase）**：
-如果您决定完全使用外部的 Supabase 数据库，请：
-1. 注释掉 `docker-compose.yml` 中的 `postgres` 容器及相关卷。
-2. 将 `backend` 容器的 `DATABASE_URL` 环境变量修改为您的 Supabase 连接字符串（包含用户名密码和连接池）。
-3. 前置已在 Supabase 的 SQL 编辑器中运行了建表 SQL。
-
-如果需要**创建初始超级管理员**，可通过命令行连接数据库执行（Docker Postgres 方式）：
 ```bash
-docker compose exec postgres psql -U postgres -d volunteer_db
+sh scripts/backup-postgres.sh
+ALLOW_RESTORE=1 sh scripts/restore-postgres.sh backups/<verified-dump>.dump
 ```
-执行 SQL（密码以 `123456` 为例，需先生成对应的 bcrypt hash。`123456` 的 hash 为 `$2b$10$YOUR_HASH_HERE`）：
-```sql
--- 这里假设生成的密码 Hash 已经生成
-INSERT INTO users (username, password_hash, real_name, role, org_name) 
-VALUES ('admin', '$2b$12$D2M6b4g2D9z9G1B6R8K1uO1n2H3s4f5d6g7h8j9k0l1z2x3c4v5b', '超级管理员', 'admin', '校青协');
-```
-*提示：在实际部署中可以使用一个简单的 node 脚本生成 bcrypt hash。*
 
-## 6. 访问系统
-- **公开查询页**：访问 `http://服务器IP/` 或 `http://服务器IP/query`
-- **管理后台**：访问 `http://服务器IP/admin`
-- **API 地址**：`http://服务器IP/api/v1/...`
+恢复后运行 `sh scripts/migrate-db.sh`、`python3 scripts/sync-supabase-database.py`，并核对主库、云端记录数及关键表摘要。同步脚本默认只 upsert；不要在仍需保留云端备份时使用 `--replace`。
 
-## 7. 常见问题
-- **更新代码后如何重启**：在根目录下执行 `docker compose up -d --build`。如果更新了前端代码，记得先重新执行 `npm run build`。
-- **数据备份**：PostgreSQL 数据保存在 `pgdata` volume 中。建议定期使用 `pg_dump` 备份数据库。
+详细操作与 2026-09-28 恢复证据见 [运维流程.md](./运维流程.md) 和 [恢复记录](./恢复记录_2026-09-28.md)。

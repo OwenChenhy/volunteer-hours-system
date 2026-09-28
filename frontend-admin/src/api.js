@@ -23,6 +23,10 @@ async function request(path, options = {}) {
     : await response.text();
 
   if (!response.ok) {
+    if (response.status === 401 && token) {
+      localStorage.removeItem('adminToken');
+      window.dispatchEvent(new Event('admin-session-expired'));
+    }
     const message = data?.message || data?.error || data || "请求失败";
     const error = new Error(message);
     error.status = response.status;
@@ -57,6 +61,13 @@ export function getMe() {
 
 export function getOverview() {
   return request("/stats/overview");
+}
+
+export function searchStudent(mode, value) {
+  return request('/admin-search', {
+    method: 'POST',
+    body: JSON.stringify({ mode, value }),
+  });
 }
 
 export function getStatsByCollege() {

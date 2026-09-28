@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>志愿时长服务状态</title>
+  <link rel="stylesheet" href="/status/styles.css?v=20260928" />
+  <script src="/status/app.js?v=20260928" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="/query/">志愿时长数据库</a>
+      <nav aria-label="页面导航"><a href="/query/">查询</a><a href="/admin/">管理</a></nav>
+    </div>
+  </header>
+  <main class="wrap">
+    <div class="page-heading">
+      <div><p class="eyebrow">服务监控</p><h1>系统状态</h1></div>
+      <button id="refresh" type="button">刷新状态</button>
+    </div>
+    <section class="overview" aria-live="polite">
+      <span id="overall-dot" class="dot pending" aria-hidden="true"></span>
+      <div><strong id="overall-text">正在检查服务</strong><p id="overview-detail">请稍候</p></div>
+      <time id="checked-at"></time>
+    </section>
+    <section class="service-section" aria-labelledby="services-title">
+      <div class="section-head"><h2 id="services-title">服务组件</h2><span>当前状态</span></div>
+      <div class="service-row"><div><span id="api-dot" class="dot pending"></span><strong>应用接口</strong><small>查询与管理请求</small></div><span id="api-label">检查中</span></div>
+      <div class="service-row"><div><span id="database-dot" class="dot pending"></span><strong>主数据库</strong><small>服务器 PostgreSQL</small></div><span id="database-label">检查中</span></div>
+      <div class="service-row"><div><span id="supabase-dot" class="dot pending"></span><strong>Supabase 数据副本</strong><small id="supabase-detail">异地数据副本</small></div><span id="supabase-label">检查中</span></div>
+      <div class="service-row"><div><span id="backup-dot" class="dot pending"></span><strong>数据库备份</strong><small id="backup-detail">最近一次备份</small></div><span id="backup-label">检查中</span></div>
+      <div class="service-row"><div><span id="source_files-dot" class="dot pending"></span><strong>公示原始文件</strong><small id="source_files-detail">复核原始行所需文件</small></div><span id="source_files-label">检查中</span></div>
+    </section>
+    <section class="data-section" aria-labelledby="data-title">
+      <div class="section-head"><h2 id="data-title">数据概况</h2><span>主库统计</span></div>
+      <div class="metric-grid">
+        <div><span>志愿记录</span><strong id="logs">—</strong></div>
+        <div><span>活动</span><strong id="activities">—</strong></div>
+        <div><span>导入批次</span><strong id="batches">—</strong></div>
+        <div><span>累计时长</span><strong id="hours">—</strong></div>
+      </div>
+    </section>
+  </main>
+  <footer class="wrap footer"><span>状态每分钟自动更新</span><a href="/health">健康接口</a></footer>
+</body>
+</html>

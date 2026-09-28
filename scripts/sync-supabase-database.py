@@ -13,6 +13,7 @@ from pathlib import Path
 TABLES = [
     ("users", "id"),
     ("schema_migrations", "version"),
+    ("public_counters", "name"),
     ("activities", "id"),
     ("import_batches", "id"),
     ("operation_logs", "id"),
@@ -41,6 +42,13 @@ def require_env(name):
     return value
 
 
+def auth_headers(service_key):
+    headers = {"apikey": service_key, "User-Agent": "VolunteerSync/1.0"}
+    if not service_key.startswith("sb_secret_"):
+        headers["Authorization"] = f"Bearer {service_key}"
+    return headers
+
+
 def supabase_request(method, supabase_url, service_key, table, payload=None, params=None):
     endpoint = f"{supabase_url.rstrip('/')}/rest/v1/{table}"
     if params:
@@ -51,8 +59,7 @@ def supabase_request(method, supabase_url, service_key, table, payload=None, par
         data=data,
         method=method,
         headers={
-            "Authorization": f"Bearer {service_key}",
-            "apikey": service_key,
+            **auth_headers(service_key),
             "Content-Type": "application/json",
             "Prefer": "resolution=merge-duplicates,return=minimal",
         },

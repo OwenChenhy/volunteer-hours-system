@@ -202,6 +202,7 @@ function App() {
   const [studentName, setStudentName] = useState('');
   const [result, setResult] = useState(null);
   const [dataMeta, setDataMeta] = useState(null);
+  const [metrics, setMetrics] = useState(null);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
@@ -225,6 +226,17 @@ function App() {
     return () => {
       alive = false;
     };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    fetch(`${API_BASE}/api/v1/query/visit`, { method: 'POST' })
+      .catch(() => null)
+      .then(() => fetch(`${API_BASE}/api/v1/query/metrics`))
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => { if (alive && data) setMetrics(data); })
+      .catch(() => {});
+    return () => { alive = false; };
   }, []);
 
   const activeVersion = result?.data_version || dataMeta;
@@ -529,6 +541,13 @@ function App() {
           </div>
         </section>
       )}
+      <footer className="public-footer">
+        <div className="public-metrics" aria-label="站点统计">
+          <span>累计访问 <strong>{metrics?.visits?.toLocaleString('zh-CN') ?? '—'}</strong></span>
+          <span>成功查询 <strong>{metrics?.queries?.toLocaleString('zh-CN') ?? '—'}</strong></span>
+        </div>
+        <a href="/status/">系统状态</a>
+      </footer>
     </main>
   );
 }

@@ -14,17 +14,20 @@ def require_env(name):
     return value
 
 
+def auth_headers(service_key):
+    headers = {"apikey": service_key, "User-Agent": "VolunteerBackup/1.0"}
+    if not service_key.startswith("sb_secret_"):
+        headers["Authorization"] = f"Bearer {service_key}"
+    return headers
+
+
 def storage_request(method, endpoint, service_key, body=None, content_type="application/json"):
     data = None if body is None else json.dumps(body).encode("utf-8")
     req = request.Request(
         endpoint,
         data=data,
         method=method,
-        headers={
-            "Authorization": f"Bearer {service_key}",
-            "apikey": service_key,
-            "Content-Type": content_type,
-        },
+        headers={**auth_headers(service_key), "Content-Type": content_type},
     )
     with request.urlopen(req, timeout=60) as response:
         content = response.read().decode("utf-8", "replace")
@@ -88,12 +91,7 @@ def upload(path, supabase_url, service_key, bucket, prefix):
         endpoint,
         data=file_path.read_bytes(),
         method="POST",
-        headers={
-            "Authorization": f"Bearer {service_key}",
-            "apikey": service_key,
-            "Content-Type": content_type,
-            "x-upsert": "true",
-        },
+        headers={**auth_headers(service_key), "Content-Type": content_type, "x-upsert": "true"},
     )
     try:
         with request.urlopen(req, timeout=180) as response:
