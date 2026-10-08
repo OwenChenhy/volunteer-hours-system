@@ -5,7 +5,17 @@ const { writeAudit } = require('../services/auditService');
 const { normalizeCollegeName, isFormalCollegeName } = require('../utils/collegeNames');
 
 module.exports = async function (fastify, opts) {
-  fastify.addHook('preHandler', authenticate);
+fastify.addHook('preHandler', authenticate);
+  fastify.addHook('preHandler', async (request, reply) => {
+    if (request.user?.role !== 'college_admin') return;
+    if (!request.user.org_name) return reply.code(403).send({ message: '账号未配置所属学院' });
+    if (request.method === 'GET') return;
+    const ids = request.params?.id ? [request.params.id] : Array.isArray(request.body?.ids) ? [...new Set(request.body.ids)] : [];
+    if (!ids.length) return;
+    if (ids.some((id) => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))) return reply.code(400).send({ message: '记录编号无效' });
+    const permitted = await db.query('SELECT id FROM volunteer_logs WHERE id = ANY($1::uuid[]) AND college = $2', [ids, normalizeCollegeName(request.user.org_name)]);
+    if (permitted.rows.length !== ids.length) return reply.code(403).send({ message: '只能处理所属学院的记录' });
+  });
 
   // 获取记录列表（支持筛选）
   fastify.get('/', async (request, reply) => {

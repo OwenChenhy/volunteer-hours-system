@@ -83,7 +83,7 @@ fastify.get('/meta', async (request, reply) => {
       }
 
       reply.header('Cache-Control', 'no-store');
-      return result;
+      return { ...result, records: result.records.map(({ id, ...record }) => record) };
     } catch (err) {
       fastify.log.error(err);
       return reply.code(500).send({ message: '服务器内部错误' });

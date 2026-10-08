@@ -89,6 +89,9 @@ async function main() {
     assert.strictEqual(publicTable.statusCode, 200); assert.strictEqual(publicTable.json().rows.length, 3);
     assert(!publicTable.json().rows.find((row) => !row.is_self).student_id.includes('ACADEMIC'));
     assert.strictEqual(publicTable.json().college, college);
+    const publicPerson = await app.inject({ method: 'POST', url: '/api/v1/query', payload: { student_id: 'ACADEMIC-001', student_name: '同名样例' } });
+    assert.strictEqual(publicPerson.statusCode, 200);
+    assert(publicPerson.json().records.every((row) => !Object.prototype.hasOwnProperty.call(row, 'id')), 'public activity details must not expose internal record IDs');
     const wrongPerson = await app.inject({ method: 'POST', url: '/api/v1/query/summary', payload: { student_id: 'ACADEMIC-001', student_name: '错误姓名', academic_year: '2025-2026' } });
     assert.strictEqual(wrongPerson.statusCode, 404);
     const id = person.records.find((record) => record.activity_name === '春季活动').id;
@@ -118,6 +121,8 @@ async function main() {
     const submitted = await inject('POST', '/api/v1/logs', { activity_id: activityId, records: [{ student_id: 'BOUNDARY-001', student_name: '边界样例', college, grade: '25级', hours: 1 }] });
     assert.strictEqual(submitted.statusCode, 201);
     const boundaryId = (await db.query("SELECT id FROM volunteer_logs WHERE student_id = 'BOUNDARY-001'")).rows[0].id;
+    assert.strictEqual((await inject('PATCH', `/api/v1/logs/${boundaryId}/approve`, undefined, 'college_admin', '车辆工程学院')).statusCode, 403);
+    assert.strictEqual((await inject('PATCH', `/api/v1/logs/${boundaryId}/reject`, { reason: '测试' }, 'college_admin', '车辆工程学院')).statusCode, 403);
     assert.strictEqual((await inject('PATCH', `/api/v1/logs/${boundaryId}/approve`)).statusCode, 200);
     const boundary = await queryStudentLogs('BOUNDARY-001', '边界样例');
     assert.strictEqual(boundary.records[0].activity_date, '2026-09-01');
