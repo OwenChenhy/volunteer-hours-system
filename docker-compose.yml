@@ -36,13 +36,14 @@ services:
       SUPABASE_BACKUP_BUCKET: ${SUPABASE_BACKUP_BUCKET:-}
       SUPABASE_BACKUP_PREFIX: ${SUPABASE_BACKUP_PREFIX:-postgres}
       IMPORT_SOURCE_DIR: /app/import-sources/2025-2026志愿者时长库3月公示
-      IMPORT_SOURCE_DIRS: /app/import-sources/2025-2026志愿者时长库3月公示||/app/import-sources/2025-2026志愿者时长库4月公示
+      IMPORT_SOURCE_DIRS: /app/import-sources/2025-2026志愿者时长库3月公示||/app/import-sources/2025-2026志愿者时长库4月公示||/app/import-sources/2025-2026志愿者时长库5月
       PORT: 3000
       NODE_ENV: production
     volumes:
       - ./backups:/app/backups:ro
       - ./2025-2026志愿者时长库3月公示:/app/import-sources/2025-2026志愿者时长库3月公示:ro
       - ./2025-2026志愿者时长库4月公示:/app/import-sources/2025-2026志愿者时长库4月公示:ro
+      - ./2025-2026志愿者时长库5月:/app/import-sources/2025-2026志愿者时长库5月:ro
     depends_on:
       - postgres
       - redis
@@ -55,8 +56,9 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./frontend-query/dist:/usr/share/nginx/html/query
       - ./frontend-admin/dist:/usr/share/nginx/html/admin
+      - ./frontend-status:/usr/share/nginx/html/status:ro
     ports:
-      - "${WEB_PORT:-8080}:80"
+      - "127.0.0.1:${WEB_PORT:-8080}:80"
     depends_on:
       - backend
     restart: unless-stopped

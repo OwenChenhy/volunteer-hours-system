@@ -38,6 +38,8 @@ function buildApp() {
   app.register(require('./routes/users'), { prefix: '/api/v1/users' });
   app.register(require('./routes/reviews'), { prefix: '/api/v1/reviews' });
   app.register(require('./routes/ops'), { prefix: '/api/v1/ops' });
+  app.register(require('./routes/adminSearch'), { prefix: '/api/v1/admin-search' });
+  app.register(require('./routes/publicStatus'), { prefix: '/api/v1/ops/public-status' });
 
   // 健康检查
   app.get('/health', async (request, reply) => {

@@ -4,15 +4,16 @@ const crypto = require('crypto');
 
 const LEGACY_PLACEHOLDER_PATTERN = /(源表|未拆分|拆分时长|拆分明细|已拆分|累计未拆分)/;
 
-async function queryStudentLogs(student_id, student_name) {
+async function queryStudentLogs(student_id, student_name, college = null) {
   // 严格比对学号和姓名，去除空格
   const sId = student_id.trim();
   const sName = student_name.trim();
-  const cacheKey = `query:v3:${sId}:${sName}`;
+  const cacheKey = `query:v3:${sId}:${sName}:${college || ''}`;
 
   const cached = await cache.getJson(cacheKey);
   if (cached) return cached;
 
+  const collegeFilter = college ? 'AND college = $3' : '';
   const query = `
     SELECT 
       student_id, student_name, college, grade,
@@ -20,10 +21,11 @@ async function queryStudentLogs(student_id, student_name) {
       import_detail_status, source_total_hours, created_at
     FROM volunteer_logs
     WHERE student_id = $1 AND student_name = $2 AND status = 'approved'
+      ${collegeFilter}
     ORDER BY activity_date DESC, created_at DESC
   `;
 
-  const result = await db.query(query, [sId, sName]);
+  const result = await db.query(query, college ? [sId, sName, college] : [sId, sName]);
   
   if (result.rows.length === 0) return null;
 
@@ -121,7 +123,7 @@ async function getDataVersion() {
     note: batch.note,
     record_count: batch.record_count,
     last_updated_at: batch.created_at,
-    precision_note: '历史导入数据展示活动所属栏目、学期或公示周期；原始公示未提供每个活动的精确发生日期。',
+    precision_note: '项目数据来源于公示时长库，查询时长仅供参考',
   };
 }
 
@@ -138,4 +140,5 @@ module.exports = {
   queryStudentLogs,
   queryLogs: queryStudentLogs,
   getDataVersion,
+  makeVerificationCode,
 };

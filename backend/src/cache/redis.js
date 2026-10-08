@@ -62,4 +62,11 @@ async function deleteByPrefix(prefix) {
   }
 }
 
-module.exports = { getJson, setJson, deleteByPrefix };
+async function close() {
+  if (!clientPromise) return;
+  const client = await clientPromise;
+  if (client?.isOpen) await client.quit();
+  clientPromise = null;
+}
+
+module.exports = { getJson, setJson, deleteByPrefix, close };

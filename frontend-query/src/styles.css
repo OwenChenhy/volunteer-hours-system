@@ -29,6 +29,26 @@ select {
   padding: 48px 0;
 }
 
+.public-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
+  color: #52636c;
+  font-size: 13px;
+}
+
+.public-footer a {
+  color: #1f7a63;
+  text-decoration: none;
+}
+
+.public-footer a:hover { text-decoration: underline; }
+
+.public-metrics { display: flex; flex-wrap: wrap; gap: 18px; }
+.public-metrics strong { margin-left: 5px; color: #18212f; font-size: 17px; font-variant-numeric: tabular-nums; }
+
 .query-panel,
 .result-panel {
   background: #ffffff;
