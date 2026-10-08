@@ -81,6 +81,8 @@ async function main() {
   try {
     const lookup = await inject('POST', '/api/v1/admin-search', { mode: 'student_name', value: '同名样例' });
     assert.strictEqual(lookup.statusCode, 200); assert.strictEqual(lookup.json().total_matches, 2);
+    assert.strictEqual((await inject('POST', '/api/v1/admin-search', { mode: 'student_id', value: 'ACADEMIC-001', page: 'Infinity' })).statusCode, 400);
+    assert.strictEqual((await inject('POST', '/api/v1/admin-search', { mode: 'student_id', value: 'ACADEMIC-001', other_value: 'x'.repeat(81) })).statusCode, 400);
     const combined = await inject('POST', '/api/v1/admin-search', { mode: 'student_name', value: '同名样例', other_value: 'ACADEMIC-002' });
     assert.strictEqual(combined.json().total_matches, 1);
     const publicTable = await app.inject({ method: 'POST', url: '/api/v1/query/summary', payload: { student_id: 'ACADEMIC-001', student_name: '同名样例', academic_year: '2025-2026', college: '任意其他学院', grade: '其他年级' } });
@@ -135,6 +137,10 @@ async function main() {
     await confirmImport(rows, adminId, 'snapshot-key', 'snapshot.xlsx', { replace_existing_note: true });
     await confirmImport(rows.map((row) => ({ ...row, hours: 12 })), adminId, 'snapshot-key', 'snapshot-new.xlsx', { replace_existing_note: true });
     assert.strictEqual((await queryStudentLogs('SNAP-001', '累计样例')).total_hours, 12);
+    const zeroPreview = await parsePreview(await workbook([['ZERO-001', '零累计样例', college, '25级', '零累计', '2026-04-01', 0, '', '', '活动', '']]));
+    assert.strictEqual(zeroPreview.errors, 1, 'ordinary activity must remain positive');
+    await confirmImport(rows.map((row) => ({ ...row, hours: 0 })), adminId, 'snapshot-key', 'snapshot-zero.xlsx', { replace_existing_note: true });
+    assert.strictEqual((await queryStudentLogs('SNAP-001', '累计样例')).total_hours, 0, 'cumulative snapshot may clear previous hours to zero');
 
     const parallelRow = { student_id: 'PAR-001', student_name: '并发样例', college, grade: '25级', activity_name: '并发活动', activity_date: '2026-04-01', hours: 1, problem_confirmed: true };
     const parallel = await Promise.all([confirmImport([parallelRow], adminId, 'parallel-a'), confirmImport([parallelRow], adminId, 'parallel-b')]);

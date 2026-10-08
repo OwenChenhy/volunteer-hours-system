@@ -30,7 +30,7 @@ fastify.get('/meta', async (request, reply) => {
     config: { rateLimit: rateLimitConfig },
     schema: { body: { type: 'object', required: ['student_id', 'student_name', 'academic_year'], properties: {
       student_id: { type: 'string', minLength: 1, maxLength: 32 }, student_name: { type: 'string', minLength: 1, maxLength: 64 },
-      academic_year: { type: 'string', pattern: '^20[0-9]{2}-20[0-9]{2}$' }, page: { type: 'integer', minimum: 1 }, limit: { type: 'integer', minimum: 1, maximum: 100 }
+      academic_year: { type: 'string', pattern: '^20[0-9]{2}-20[0-9]{2}$' }, page: { type: 'integer', minimum: 1, maximum: 100000 }, limit: { type: 'integer', minimum: 1, maximum: 100 }
     } } }
   }, async (request, reply) => {
     const input = request.body;

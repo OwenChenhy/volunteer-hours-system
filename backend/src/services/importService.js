@@ -99,7 +99,7 @@ const parsePreview = async (buffer) => {
         addIssue(previewRow, 'phone_too_long', 'warning', '联系方式超过 20 个字符，确认后将截断导入');
       }
 
-      if (previewRow.hours === null || (previewRow.hours <= 0 && !previewRow.is_adjustment)) {
+      if (previewRow.hours === null || (previewRow.hours < 0 && !previewRow.is_adjustment) || (previewRow.hours === 0 && !previewRow.is_adjustment && !previewRow.is_cumulative)) {
         addIssue(previewRow, 'invalid_hours', 'error', '普通服务时长必须大于0，扣减需选择调整并填写说明');
       } else if (Math.abs(previewRow.hours) > 9999.9) {
         addIssue(previewRow, 'hours_too_large', 'error', '服务时长超过系统上限 9999.9');
@@ -529,7 +529,7 @@ async function prepareImportRow(row, options) {
   if (record.college && !isFormalCollegeName(record.college)) {
     throw importValidationError(`第 ${rowNumber} 行学院不在正式名称列表，请先修正原始数据`);
   }
-  if (record.hours === null || (record.hours <= 0 && !record.is_adjustment)) {
+  if (record.hours === null || (record.hours < 0 && !record.is_adjustment) || (record.hours === 0 && !record.is_adjustment && !row.is_cumulative)) {
     throw importValidationError(`第 ${rowNumber} 行普通服务时长必须大于0，扣减须为调整记录`);
   }
   if (record.is_adjustment && !record.adjustment_reason) throw importValidationError(`第 ${rowNumber} 行调整说明不能为空`);

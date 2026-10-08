@@ -12,7 +12,8 @@ module.exports = async function (fastify) {
     const mode = String(request.body?.mode || '').trim();
     const value = String(request.body?.value || '').trim();
     const otherValue = String(request.body?.other_value || '').trim();
-    const page = Math.max(1, Math.floor(Number(request.body?.page) || 1));
+    const page = request.body?.page === undefined ? 1 : Number(request.body.page);
+    if (!Number.isInteger(page) || page < 1 || page > 100000 || otherValue.length > 80) return reply.code(400).send({ message: '页码或联合查询条件无效' });
     if (!['student_id', 'student_name', 'verification_code'].includes(mode) || !value || value.length > 80) {
       return reply.code(400).send({ message: '请选择查询方式并输入有效内容' });
     }
