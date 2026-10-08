@@ -83,11 +83,12 @@ async function main() {
     'regression',
     'regression.xlsx'
   );
-  assert.strictEqual(result.count, 3);
-  assert.strictEqual(result.confirmed_problem_count, 1);
+  assert.strictEqual(result.count, 2);
+  assert.strictEqual(result.skipped_duplicate_count, 1);
+  assert.strictEqual(result.confirmed_problem_count, 0);
   assert.strictEqual(result.replaced_batch_count, 0);
   assert.strictEqual(result.replaced_record_count, 0);
-  assert.strictEqual(insertedLogs, 3);
+  assert.strictEqual(insertedLogs, 2);
 
   const invalidPreview = await parsePreview(await buildInvalidWorkbookBuffer());
   assert.strictEqual(invalidPreview.errors, 1, 'hours over DB limit should be a hard error');

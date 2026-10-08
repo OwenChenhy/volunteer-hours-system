@@ -11,6 +11,8 @@ module.exports = async function (fastify) {
   fastify.post('/', async (request, reply) => {
     const mode = String(request.body?.mode || '').trim();
     const value = String(request.body?.value || '').trim();
+    const otherValue = String(request.body?.other_value || '').trim();
+    const page = Math.max(1, Math.floor(Number(request.body?.page) || 1));
     if (!['student_id', 'student_name', 'verification_code'].includes(mode) || !value || value.length > 80) {
       return reply.code(400).send({ message: '请选择查询方式并输入有效内容' });
     }
@@ -34,6 +36,10 @@ module.exports = async function (fastify) {
       params.push(value);
       filter += ` AND ${mode} = $${params.length}`;
     }
+    if (otherValue && mode !== 'verification_code') {
+      params.push(otherValue);
+      filter += ` AND ${mode === 'student_id' ? 'student_name' : 'student_id'} = $${params.length}`;
+    }
     const result = await db.query(`
       SELECT student_id, student_name, SUM(hours)::numeric AS total_hours, COUNT(*)::int AS record_count
       FROM volunteer_logs
@@ -51,12 +57,14 @@ module.exports = async function (fastify) {
         version.batch_id
       ) === value.toUpperCase())
       : result.rows;
-    const selected = candidates.slice(0, 20);
+    const selected = candidates.slice((page - 1) * 20, page * 20);
     const matches = await Promise.all(selected.map((row) => queryStudentLogs(row.student_id, row.student_name, college)));
 
     return {
       total_matches: candidates.length,
-      truncated: candidates.length > selected.length,
+      truncated: candidates.length > page * 20,
+      page,
+      page_size: 20,
       matches: matches.filter(Boolean),
     };
   });

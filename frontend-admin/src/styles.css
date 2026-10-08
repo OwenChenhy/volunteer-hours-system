@@ -966,3 +966,8 @@ td input[type="checkbox"] {
     gap: 4px;
   }
 }
+
+.academic-editor { padding: 20px; background: var(--panel, white); border: 1px solid #d8dfdd; border-radius: 12px; margin: 20px 0; }
+.academic-editor label { display: flex; flex-direction: column; gap: 8px; }
+.academic-editor .inline-check { flex-direction: row; align-items: center; }
+.academic-error { color: #b42318; }

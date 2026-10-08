@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
+import AcademicSummary from './AcademicSummary';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 const ALL = 'all';
@@ -41,6 +42,7 @@ function normalizeResult(data) {
       college: student.college || '未填写',
       grade: student.grade || '未填写'
     },
+    academic_summaries: data.academic_summaries || [],
     total_hours: Number(data.total_hours || student.total_hours || 0),
     data_version: dataVersion,
     verification_code: data.verification_code || data.verificationCode || student.verification_code || '',
@@ -210,6 +212,7 @@ function App() {
   const [timeFilter, setTimeFilter] = useState(ALL);
   const [sortBy, setSortBy] = useState('time_desc');
   const [groupBy, setGroupBy] = useState('none');
+  const [refreshStatus, setRefreshStatus] = useState('');
 
   useEffect(() => {
     let alive = true;
@@ -238,6 +241,31 @@ function App() {
       .catch(() => {});
     return () => { alive = false; };
   }, []);
+
+useEffect(() => {
+    if (!result) return;
+    const identity = { student_id: result.student.student_id, student_name: result.student.student_name };
+    const controller = new AbortController();
+    const timer = setInterval(async () => {
+      if (document.visibilityState === 'hidden') return;
+      try {
+        const response = await fetch(`${API_BASE}/api/v1/query/meta`, { cache: 'no-store', signal: controller.signal });
+        if (!response.ok) throw new Error('版本检查失败');
+        const meta = await response.json();
+        if (controller.signal.aborted) return;
+        setDataMeta(meta);
+        if (String(meta.revision) !== String(result.data_version?.revision)) {
+          const updated = await fetch(`${API_BASE}/api/v1/query`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', signal: controller.signal, body: JSON.stringify(identity) });
+          if (controller.signal.aborted) return;
+          if (updated.status === 404) { setResult(null); setMessage('人员信息已更新，请按最新学号和姓名重新查询。'); return; }
+          if (!updated.ok) throw new Error('刷新失败');
+          const payload = await updated.json();
+          if (!controller.signal.aborted) { setResult(normalizeResult(payload)); setRefreshStatus('已同步最新时长'); }
+        }
+      } catch (err) { if (!controller.signal.aborted) setRefreshStatus('暂未完成自动更新，请稍后重新查询'); }
+    }, 30000);
+    return () => { clearInterval(timer); controller.abort(); };
+  }, [result?.student.student_id, result?.student.student_name, result?.data_version?.revision]);
 
   const activeVersion = result?.data_version || dataMeta;
 
@@ -435,6 +463,8 @@ function App() {
             <p className="batch-note">批次备注：{result.data_version.note}</p>
           )}
 
+          <AcademicSummary result={result} />
+          <p role="status" className="data-note">{refreshStatus || "页面每30秒检查更新，管理员修改后无需等待人工转发表格。"}</p>
           <div className="records-header">
             <div>
               <h3>活动明细</h3>
@@ -541,6 +571,9 @@ function App() {
           </div>
         </section>
       )}
+<section className="feedback-panel" aria-label="时长问题反馈"><h3>时长或信息有误？</h3><p>请提供学号、姓名、学年、活动名称、应有时长和证明材料，由办公室核对处理。</p>
+        {activeVersion?.feedback_email ? <a href={`mailto:${activeVersion.feedback_email}?subject=${encodeURIComponent(`志愿时长核对 ${result?.student.student_id || ''}`)}`}>联系办公室：{activeVersion.feedback_email}</a> : <p>办公室反馈邮箱待配置，请先联系学院负责人。</p>}
+      </section>
       <footer className="public-footer">
         <div className="public-metrics" aria-label="站点统计">
           <span>累计访问 <strong>{metrics?.visits?.toLocaleString('zh-CN') ?? '—'}</strong></span>

@@ -49,6 +49,7 @@ module.exports = async function (fastify, opts) {
       userId: request.user.id,
       filename: data.filename,
       rows: preview.rows,
+      file_hash: crypto.createHash('sha256').update(buffer).digest('hex'),
       createdAt: Date.now()
     });
 
@@ -72,6 +73,9 @@ module.exports = async function (fastify, opts) {
           filename: { type: 'string' },
           default_activity_date: { type: 'string' },
           default_activity_name: { type: 'string' },
+          default_academic_year: { type: 'string' },
+          default_academic_term: { type: 'string' },
+          default_grade: { type: 'string', maxLength: 16 },
           replace_existing_note: { type: 'boolean' }
         }
       }
@@ -120,7 +124,11 @@ module.exports = async function (fastify, opts) {
       const result = await importService.confirmImport(rows, request.user.id, note, preview.filename, {
         default_activity_date,
         default_activity_name,
-        replace_existing_note
+        replace_existing_note,
+        file_hash: preview.file_hash,
+        default_academic_year: request.body.default_academic_year,
+        default_academic_term: request.body.default_academic_term,
+        default_grade: request.body.default_grade
       });
       previewStore.delete(preview_id);
       await writeAudit(request, 'import.confirm', 'import_batch', result.batch_id, {
@@ -151,11 +159,11 @@ module.exports = async function (fastify, opts) {
   });
 
   fastify.get('/template', async (request, reply) => {
-    const headers = ['学号', '姓名', '学院', '年级', '活动名称', '活动日期', '服务时长（小时）', '联系方式'];
+    const headers = ['学号', '姓名', '学院', '年级', '活动名称', '活动日期', '服务时长（小时）', '联系方式', '学年', '归属阶段', '录入类型', '调整说明'];
     const sample = ['TEST-STUDENT-003', '测试用户', '计算机科学与工程学院', '25级', '社区志愿服务', '2026-04-25', 2.5, ''];
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('标准导入模板');
-    worksheet.addRows([headers, sample]);
+    worksheet.addRows([headers, [...sample, '2025-2026', '下半年', '活动', ''], ['TEST-STUDENT-003', '测试用户', '计算机科学与工程学院', '25级', '活动时长扣减', '2026-04-25', -0.5, '', '2025-2026', '下半年', '调整', '审核后扣减重复时长']]);
     worksheet.columns.forEach((column) => {
       column.width = 18;
     });

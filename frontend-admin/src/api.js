@@ -63,10 +63,10 @@ export function getOverview() {
   return request("/stats/overview");
 }
 
-export function searchStudent(mode, value) {
+export function searchStudent(mode, value, otherValue = '', page = 1) {
   return request('/admin-search', {
     method: 'POST',
-    body: JSON.stringify({ mode, value }),
+    body: JSON.stringify({ mode, value, other_value: otherValue, page }),
   });
 }
 
@@ -287,3 +287,5 @@ async function downloadFile(path, filename) {
   link.remove();
   URL.revokeObjectURL(url);
 }
+
+export function getAcademicSummary(params) { return request(`/stats/academic-summary${toQuery(params)}`); }

@@ -37,6 +37,10 @@ services:
       SUPABASE_BACKUP_PREFIX: ${SUPABASE_BACKUP_PREFIX:-postgres}
       IMPORT_SOURCE_DIR: /app/import-sources/2025-2026志愿者时长库3月公示
       IMPORT_SOURCE_DIRS: /app/import-sources/2025-2026志愿者时长库3月公示||/app/import-sources/2025-2026志愿者时长库4月公示||/app/import-sources/2025-2026志愿者时长库5月
+      ACADEMIC_YEAR_START_MONTH: ${ACADEMIC_YEAR_START_MONTH:-9}
+      ACADEMIC_UPPER_MONTHS: ${ACADEMIC_UPPER_MONTHS:-9,10,11,12,1}
+      ACADEMIC_VACATION_MONTHS: ${ACADEMIC_VACATION_MONTHS:-2,7,8}
+      FEEDBACK_EMAIL: ${FEEDBACK_EMAIL:-}
       PORT: 3000
       NODE_ENV: production
     volumes:

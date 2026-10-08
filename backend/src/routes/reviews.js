@@ -1,4 +1,5 @@
 const db = require('../db');
+const academic = require('../services/academicService');
 const fs = require('fs/promises');
 const path = require('path');
 const ExcelJS = require('exceljs');
@@ -100,7 +101,9 @@ async function resolveActivityId(client, log, userId) {
   const activityName = String(log.activity_name || '').trim();
   if (!activityName || !log.activity_date) return null;
   const activityPeriod = String(log.activity_period || '').trim();
-  const activityDate = String(log.activity_date).slice(0, 10);
+  const activityDate = log.activity_date instanceof Date
+    ? [log.activity_date.getFullYear(), String(log.activity_date.getMonth() + 1).padStart(2, '0'), String(log.activity_date.getDate()).padStart(2, '0')].join('-')
+    : String(log.activity_date).slice(0, 10);
 
   const existing = await client.query(
     `
@@ -295,6 +298,10 @@ module.exports = async function (fastify, opts) {
           activity_period: { type: 'string' },
           activity_date: { type: 'string' },
           hours: { type: 'number' },
+          academic_year: { type: 'string' },
+          academic_term: { type: 'string' },
+          is_adjustment: { type: 'boolean' },
+          sync_student_info: { type: 'boolean' },
           student_id: { type: 'string' },
           student_name: { type: 'string' },
           college: { type: 'string' },
@@ -316,6 +323,7 @@ module.exports = async function (fastify, opts) {
       return reply.code(404).send({ message: '记录不存在' });
     }
     const before = beforeRes.rows[0];
+    if (request.user.role === 'college_admin' && !request.user.org_name) return reply.code(403).send({ message: '账号未配置所属学院' });
     if (request.user.role === 'college_admin' && request.user.org_name && !hasFullAccess(request.user)) {
       const scopedCollege = normalizeCollegeName(request.user.org_name);
       if (before.college !== scopedCollege) {
@@ -333,6 +341,14 @@ module.exports = async function (fastify, opts) {
       changed[column] = value;
     }
 
+    if (Object.prototype.hasOwnProperty.call(patch, 'academic_year')) {
+      if (!academic.validYear(patch.academic_year)) return reply.code(400).send({ message: '学年格式无效' });
+      setField('academic_year', patch.academic_year);
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'academic_term')) {
+      if (!Object.prototype.hasOwnProperty.call(academic.TERM_LABELS, patch.academic_term)) return reply.code(400).send({ message: '活动归属阶段无效' });
+      setField('academic_term', patch.academic_term);
+    }
     if (Object.prototype.hasOwnProperty.call(patch, 'student_id')) {
       const value = String(patch.student_id || '').trim();
       if (!value) return reply.code(400).send({ message: '学号不能为空' });
@@ -353,16 +369,18 @@ module.exports = async function (fastify, opts) {
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'activity_date')) {
       const value = String(patch.activity_date || '').trim();
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      if (!academic.validDate(value)) {
         return reply.code(400).send({ message: '活动日期必须是 YYYY-MM-DD' });
       }
       setField('activity_date', value);
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'hours')) {
       const value = Math.round(Number(patch.hours) * 10) / 10;
-      if (!Number.isFinite(value) || value <= 0 || value > 9999.9) {
-        return reply.code(400).send({ message: '服务时长必须在 0 到 9999.9 之间' });
+      if (!Number.isFinite(value) || Math.abs(value) > 9999.9) {
+        return reply.code(400).send({ message: '服务时长必须在 -9999.9 到 9999.9 之间' });
       }
+      if (value <= 0 && !String(patch.note || '').trim()) return reply.code(400).send({ message: '扣减或作废必须填写修改原因' });
+      if (value < 0) { setField('is_adjustment', true); setField('adjustment_reason', String(patch.note).trim().slice(0, 512)); }
       setField('hours', value);
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'source_total_hours')) {
@@ -377,6 +395,7 @@ module.exports = async function (fastify, opts) {
       if (value && !isFormalCollegeName(value)) {
         return reply.code(400).send({ message: '学院不在正式名称列表' });
       }
+      if (request.user.role === 'college_admin' && value !== normalizeCollegeName(request.user.org_name)) return reply.code(403).send({ message: '不能把学生记录转移到其他学院' });
       setField('college', value || null);
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'grade')) {
@@ -396,7 +415,12 @@ module.exports = async function (fastify, opts) {
 
     const client = await db.pool.connect();
     try {
-      await client.query('BEGIN');
+await client.query('BEGIN');
+      await client.query('SELECT id FROM volunteer_logs WHERE id = $1 FOR UPDATE', [id]);
+      if (changed.student_id && changed.student_id !== before.student_id) {
+        const collision = await client.query('SELECT 1 FROM volunteer_logs WHERE student_id = $1 AND student_name <> $2 LIMIT 1', [changed.student_id, changed.student_name || before.student_name]);
+        if (collision.rows.length) { await client.query('ROLLBACK'); return reply.code(409).send({ message: '新学号已关联其他姓名，请先核对人员身份' }); }
+      }
       let updated = before;
       if (updates.length > 0) {
         params.push(id);
@@ -409,6 +433,15 @@ module.exports = async function (fastify, opts) {
         updated = updateRes.rows[0];
       }
 
+if (patch.sync_student_info === true) {
+        const identityFields = ['student_id', 'student_name', 'college', 'grade', 'phone'].filter((key) => Object.prototype.hasOwnProperty.call(changed, key));
+        if (identityFields.length) {
+          const values = identityFields.map((key) => changed[key]);
+          let filter = `student_id = $${values.push(before.student_id)}`;
+          if (request.user.role === 'college_admin') filter += ` AND college = $${values.push(normalizeCollegeName(request.user.org_name))}`;
+          await client.query(`UPDATE volunteer_logs SET ${identityFields.map((key, index) => `${key} = $${index + 1}`).join(', ')} WHERE ${filter}`, values);
+        }
+      }
       const shouldSyncActivity = patch.sync_activity !== false && (
         Object.prototype.hasOwnProperty.call(changed, 'activity_name') ||
         Object.prototype.hasOwnProperty.call(changed, 'activity_period') ||

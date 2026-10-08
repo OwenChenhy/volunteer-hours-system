@@ -83,12 +83,14 @@ module.exports = async function (fastify, opts) {
     }
 
     // 获取活动信息以冗余存储
-    const actRes = await db.query('SELECT name, start_time FROM activities WHERE id = $1', [activity_id]);
+    const actRes = await db.query("SELECT name, created_by, academic_year, academic_term, (start_time AT TIME ZONE 'Asia/Shanghai')::date AS activity_date FROM activities WHERE id = $1", [activity_id]);
     if (actRes.rows.length === 0) {
       return reply.code(404).send({ message: '关联活动不存在' });
     }
     const activity = actRes.rows[0];
+    if (!hasFullAccess(request.user) && activity.created_by !== request.user.id) return reply.code(403).send({ message: '只能提交自己负责活动的记录' });
     for (const record of records) {
+      if (!String(record.student_id || '').trim() || !String(record.student_name || '').trim() || !Number.isFinite(record.hours) || record.hours <= 0 || record.hours > 9999.9) return reply.code(400).send({ message: '学生身份和正数服务时长必须有效' });
       const college = normalizeCollegeName(record.college);
       if (college && !isFormalCollegeName(college)) {
         return reply.code(400).send({ message: `学院不在正式名称列表：${college}` });
@@ -103,8 +105,8 @@ module.exports = async function (fastify, opts) {
         const query = `
           INSERT INTO volunteer_logs (
             student_id, student_name, college, grade, activity_id, activity_name, activity_date,
-            hours, phone, source, status, submitted_by
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'online', 'pending', $10)
+            hours, phone, source, status, submitted_by, academic_year, academic_term
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'online', 'pending', $10, $11, $12)
         `;
         await client.query(query, [
           String(record.student_id || '').trim(),
@@ -113,10 +115,12 @@ module.exports = async function (fastify, opts) {
           record.grade || null,
           activity_id,
           activity.name,
-          activity.start_time,
+          activity.activity_date,
           record.hours,
           record.phone || null,
-          userId
+          userId,
+          activity.academic_year || null,
+          activity.academic_term || null
         ]);
       }
       await client.query('COMMIT');

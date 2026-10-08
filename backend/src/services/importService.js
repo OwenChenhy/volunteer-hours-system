@@ -1,5 +1,6 @@
 const ExcelJS = require('exceljs');
 const db = require('../db');
+const academic = require('./academicService');
 const { normalizeCollegeName, isFormalCollegeName } = require('../utils/collegeNames');
 
 /**
@@ -33,10 +34,17 @@ const parsePreview = async (buffer) => {
         student_id: normalizeCell(rowData.student_id),
         student_name: normalizeCell(rowData.student_name),
         college: normalizeCollegeName(rowData.college),
-        grade: normalizeCell(rowData.grade),
+        grade: normalizeCell(rowData.grade) || normalizeCell(sheetName.match(/(?:20)?\d{2}级/)?.[0]),
         activity_name: normalizeCell(rowData.activity_name),
         activity_date: normalizeDate(rowData.activity_date),
         hours: parseHours(rowData.hours),
+        term_inferred: !normalizeCell(rowData.academic_term),
+        activity_period: normalizeCell(rowData.activity_period),
+        academic_year: normalizeCell(rowData.academic_year),
+        academic_term: normalizeTerm(rowData.academic_term),
+        is_adjustment: /调整|扣减|补录更正/.test(String(rowData.record_type || '')) || Boolean(rowData.is_adjustment),
+        adjustment_reason: normalizeCell(rowData.adjustment_reason),
+        is_cumulative: Boolean(rowData.is_cumulative),
         phone: normalizeCell(rowData.phone),
         status: 'ok',
         message: '',
@@ -45,6 +53,16 @@ const parsePreview = async (buffer) => {
         requires_confirmation: false
       };
 
+      if (/扣减/.test(String(rowData.record_type || '')) && previewRow.hours !== null) previewRow.hours = -Math.abs(previewRow.hours);
+      if (!previewRow.grade && previewRow.student_id && previewRow.student_name) {
+        const known = await db.query('SELECT DISTINCT grade FROM volunteer_logs WHERE student_id = $1 AND student_name = $2 AND grade IS NOT NULL AND grade <> $3', [previewRow.student_id, previewRow.student_name, '']);
+        if (known.rows.length === 1) previewRow.grade = known.rows[0].grade;
+      }
+      if (!previewRow.grade) addIssue(previewRow, 'missing_grade', 'warning', '缺少年级，请提供默认年级或确认暂未分类');
+      if (previewRow.academic_year && !academic.validYear(previewRow.academic_year)) addIssue(previewRow, 'invalid_academic_year', 'error', '学年必须为连续两年，例如2025-2026');
+      if (rowData.academic_term && !previewRow.academic_term) addIssue(previewRow, 'invalid_academic_term', 'error', '阶段须为上半年、下半年或寒暑假补录');
+      if (previewRow.is_adjustment && !previewRow.adjustment_reason) addIssue(previewRow, 'missing_adjustment_reason', 'error', '调整记录必须填写调整说明');
+      if (previewRow.is_cumulative) addIssue(previewRow, 'cumulative_table', 'warning', '本表为累计数据，请用同一批次备注替换旧累计表，不能直接叠加');
       if (!previewRow.student_id || !previewRow.student_name) {
         addIssue(previewRow, 'missing_identity', 'error', '学号或姓名不能为空');
       }
@@ -81,9 +99,9 @@ const parsePreview = async (buffer) => {
         addIssue(previewRow, 'phone_too_long', 'warning', '联系方式超过 20 个字符，确认后将截断导入');
       }
 
-      if (previewRow.hours === null || previewRow.hours <= 0) {
-        addIssue(previewRow, 'invalid_hours', 'error', '服务时长必须大于 0');
-      } else if (previewRow.hours > 9999.9) {
+      if (previewRow.hours === null || (previewRow.hours <= 0 && !previewRow.is_adjustment)) {
+        addIssue(previewRow, 'invalid_hours', 'error', '普通服务时长必须大于0，扣减需选择调整并填写说明');
+      } else if (Math.abs(previewRow.hours) > 9999.9) {
         addIssue(previewRow, 'hours_too_large', 'error', '服务时长超过系统上限 9999.9');
       } else if (previewRow.hours > 200) {
         addIssue(previewRow, 'large_hours', 'warning', '服务时长超过 200 小时，请管理员确认');
@@ -105,13 +123,18 @@ const parsePreview = async (buffer) => {
         const isDuplicate = await checkDuplicateRecord(
           previewRow.student_id,
           previewRow.activity_name,
-          previewRow.activity_date
+          previewRow.activity_date, previewRow.is_adjustment, previewRow.hours, previewRow.adjustment_reason
         );
         if (isDuplicate) {
           addIssue(previewRow, 'duplicate_record', 'warning', '该学生已存在相同活动和日期的已通过记录');
         }
       }
 
+      if (previewRow.is_cumulative && previewRow.term_inferred && !previewRow.activity_period) previewRow.academic_term = 'unassigned';
+      const category = academic.classify(previewRow);
+      previewRow.academic_year = category.academic_year;
+      previewRow.academic_term = category.academic_term;
+      previewRow.term_label = category.term_label;
       finalizePreviewRow(previewRow);
       if (previewRow.status === 'error') {
         errorCount++;
@@ -147,16 +170,15 @@ const parsePreview = async (buffer) => {
 const confirmImport = async (rows, userId, note, filename = 'imported_file.xlsx', options = {}) => {
   const importableRows = [];
   let confirmedProblemCount = 0;
+  let skippedDuplicateCount = 0;
   const seenInRequest = new Set();
 
   for (const row of rows) {
-    const { record, problemIssues } = await prepareImportRow(row, options);
+    const { record, problemIssues } = await prepareImportRow(row, { ...options, note });
     const duplicateKey = makeDuplicateKey(record);
     if (duplicateKey && seenInRequest.has(duplicateKey)) {
-      if (row.problem_confirmed !== true) {
-        throw importValidationError(`第 ${row.row || '?'} 行与本次导入中其他记录重复，需管理员确认后才能导入`);
-      }
-      problemIssues.push('duplicate_in_request');
+      skippedDuplicateCount++;
+      continue;
     } else if (duplicateKey) {
       seenInRequest.add(duplicateKey);
     }
@@ -170,7 +192,16 @@ const confirmImport = async (rows, userId, note, filename = 'imported_file.xlsx'
 
   const client = await db.pool.connect();
   try {
-    await client.query('BEGIN');
+await client.query('BEGIN');
+    // ponytail: one transaction lock serializes school imports; use per-dataset locks if concurrent import volume grows.
+    await client.query('SELECT pg_advisory_xact_lock(927641)');
+    if (options.file_hash && options.replace_existing_note !== true) {
+      const existingFile = await client.query('SELECT id, record_count FROM import_batches WHERE file_hash = $1', [options.file_hash]);
+      if (existingFile.rows.length) {
+        await client.query('ROLLBACK');
+        return { success: true, count: 0, batch_id: existingFile.rows[0].id, skipped_duplicate_count: rows.length, already_imported: true, confirmed_problem_count: 0, replaced_batch_count: 0, replaced_record_count: 0 };
+      }
+    }
 
     let replacedBatchCount = 0;
     let replacedRecordCount = 0;
@@ -195,28 +226,40 @@ const confirmImport = async (rows, userId, note, filename = 'imported_file.xlsx'
       }
     }
 
+const uniqueRows = [];
+    for (const row of importableRows) {
+      if (await checkDuplicateRecord(row.student_id, row.activity_name, row.activity_date, row.is_adjustment, row.hours, row.adjustment_reason, client)) skippedDuplicateCount++;
+      else uniqueRows.push(row);
+    }
+    if (!uniqueRows.length) {
+      await client.query('ROLLBACK');
+      return { success: true, batch_id: null, count: 0, skipped_duplicate_count: skippedDuplicateCount, confirmed_problem_count: confirmedProblemCount, replaced_batch_count: 0, replaced_record_count: 0 };
+    }
+
     // 1. 创建导入批次
     const batchQuery = `
-      INSERT INTO import_batches (filename, imported_by, record_count, note)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO import_batches (filename, imported_by, record_count, note, file_hash)
+      VALUES ($1, $2, $3, $4, $5)
       RETURNING id
     `;
     const batchRes = await client.query(batchQuery, [
       filename,
       userId,
-      importableRows.length,
-      note
+      uniqueRows.length,
+      note,
+      options.file_hash || null
     ]);
     const batchId = batchRes.rows[0].id;
 
     // 2. 批量插入记录
     // 注意：导入的数据状态为 'approved' 且来源为 'imported'
-    for (const row of importableRows) {
+    for (const row of uniqueRows) {
       const logQuery = `
         INSERT INTO volunteer_logs (
           student_id, student_name, college, grade, phone, activity_name, activity_date,
-          hours, source, status, import_batch_id, is_legacy_processed
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'imported', 'approved', $9, false)
+          hours, source, status, import_batch_id, is_legacy_processed,
+          academic_year, academic_term, is_adjustment, adjustment_reason, activity_period
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'imported', 'approved', $9, false, $10, $11, $12, $13, $14)
       `;
       await client.query(logQuery, [
         row.student_id,
@@ -227,7 +270,12 @@ const confirmImport = async (rows, userId, note, filename = 'imported_file.xlsx'
         row.activity_name,
         row.activity_date,
         row.hours,
-        batchId
+        batchId,
+        row.academic_year,
+        row.academic_term,
+        row.is_adjustment,
+        row.adjustment_reason || null,
+        row.activity_period || null
       ]);
     }
 
@@ -235,7 +283,8 @@ const confirmImport = async (rows, userId, note, filename = 'imported_file.xlsx'
     return {
       success: true,
       batch_id: batchId,
-      count: importableRows.length,
+      count: uniqueRows.length,
+      skipped_duplicate_count: skippedDuplicateCount,
       confirmed_problem_count: confirmedProblemCount,
       replaced_batch_count: replacedBatchCount,
       replaced_record_count: replacedRecordCount
@@ -348,8 +397,23 @@ function mapByHeaders(headers, row) {
     activity_name: get('活动名称') || activityName,
     activity_date: get('活动日期', '活动时间', '开展时间'),
     hours: get('服务时长（小时）', '服务时长', '时长', '累计服务时长'),
-    phone: get('联系方式', '联系电话', '手机号')
+    phone: get('联系方式', '联系电话', '手机号'),
+    academic_year: get('学年'),
+    academic_term: get('归属阶段', '学期', '阶段'),
+    activity_period: get('活动期间', '时间说明'),
+    record_type: get('录入类型', '记录类型'),
+    adjustment_reason: get('调整说明', '修改原因'),
+    is_cumulative: headers.some((header) => /累计.*时长/.test(header))
   };
+}
+
+function normalizeTerm(value) {
+  const text = normalizeCell(value);
+  if (Object.prototype.hasOwnProperty.call(academic.TERM_LABELS, text)) return text;
+  if (/寒假|暑假|寒暑假|暑期|寒期/.test(text)) return 'vacation';
+  if (/上半年|上学期|秋季/.test(text)) return 'upper';
+  if (/下半年|下学期|春季/.test(text)) return 'lower';
+  return null;
 }
 
 function normalizeCell(value) {
@@ -383,6 +447,8 @@ function finalizePreviewRow(row) {
 
 function buildDiffReport(rows) {
   const byCollege = new Map();
+  const byGrade = new Map();
+  const byTerm = new Map();
   const issueCounts = new Map();
   let totalHours = 0;
   let importableHours = 0;
@@ -392,11 +458,13 @@ function buildDiffReport(rows) {
   for (const row of rows) {
     const college = row.college || '未填写';
     const hours = Number(row.hours || 0);
-    if (Number.isFinite(hours) && hours > 0) {
+    if (Number.isFinite(hours)) {
       totalHours += hours;
       if (row.can_import) importableHours += hours;
     }
     byCollege.set(college, (byCollege.get(college) || 0) + 1);
+    byGrade.set(row.grade || '待确认年级', (byGrade.get(row.grade || '待确认年级') || 0) + 1);
+    byTerm.set(row.term_label || '待确认', (byTerm.get(row.term_label || '待确认') || 0) + 1);
     if (hasIssue(row, 'unknown_college')) unknownCollegeRows++;
     if (hasIssue(row, 'large_hours')) largeHourRows++;
     for (const issue of row.issues || []) {
@@ -405,6 +473,8 @@ function buildDiffReport(rows) {
   }
 
   return {
+    by_grade: [...byGrade].map(([grade, count]) => ({ grade, count })),
+    by_term: [...byTerm].map(([term, count]) => ({ term, count })),
     total_rows: rows.length,
     importable_rows: rows.filter((row) => row.can_import).length,
     error_rows: rows.filter((row) => row.status === 'error').length,
@@ -435,11 +505,16 @@ async function prepareImportRow(row, options) {
     student_id: normalizeCell(row.student_id),
     student_name: normalizeCell(row.student_name),
     college: normalizeCollegeName(row.college),
-    grade: normalizeCell(row.grade),
+    grade: normalizeCell(row.grade || options.default_grade),
     phone: normalizeCell(row.phone),
     activity_name: normalizeCell(row.activity_name),
     activity_date: normalizeDate(row.activity_date),
-    hours: parseHours(row.hours)
+    hours: parseHours(row.hours),
+    academic_year: normalizeCell(options.default_academic_year || row.academic_year),
+    academic_term: normalizeTerm(options.default_academic_term || (row.term_inferred && !row.is_cumulative ? null : row.academic_term)),
+    activity_period: normalizeCell(row.activity_period),
+    is_adjustment: row.is_adjustment === true,
+    adjustment_reason: normalizeCell(row.adjustment_reason)
   };
 
   if (!record.student_id || !record.student_name) {
@@ -454,10 +529,13 @@ async function prepareImportRow(row, options) {
   if (record.college && !isFormalCollegeName(record.college)) {
     throw importValidationError(`第 ${rowNumber} 行学院不在正式名称列表，请先修正原始数据`);
   }
-  if (record.hours === null || record.hours <= 0) {
-    throw importValidationError(`第 ${rowNumber} 行服务时长必须大于 0`);
+  if (record.hours === null || (record.hours <= 0 && !record.is_adjustment)) {
+    throw importValidationError(`第 ${rowNumber} 行普通服务时长必须大于0，扣减须为调整记录`);
   }
-  if (record.hours > 9999.9) {
+  if (record.is_adjustment && !record.adjustment_reason) throw importValidationError(`第 ${rowNumber} 行调整说明不能为空`);
+  if (record.academic_year && !academic.validYear(record.academic_year)) throw importValidationError(`第 ${rowNumber} 行学年无效`);
+  if (row.is_cumulative && (!options.replace_existing_note || !normalizeCell(options.note))) throw importValidationError('累计表必须使用固定批次备注替换旧表，请选择安全重导');
+  if (Math.abs(record.hours) > 9999.9) {
     throw importValidationError(`第 ${rowNumber} 行服务时长超过系统上限 9999.9`);
   }
 
@@ -499,7 +577,8 @@ async function prepareImportRow(row, options) {
     problemIssues.push('large_hours');
   }
 
-  if (await checkDuplicateRecord(record.student_id, record.activity_name, record.activity_date)) {
+  Object.assign(record, academic.classify(record));
+  if (await checkDuplicateRecord(record.student_id, record.activity_name, record.activity_date, record.is_adjustment, record.hours, record.adjustment_reason)) {
     problemIssues.push('duplicate_record');
   }
 
@@ -552,7 +631,7 @@ function excelSerialDateToIso(serial) {
 
 function makeDuplicateKey(row) {
   if (!row.student_id || !row.activity_name || !isValidDate(row.activity_date)) return '';
-  return [row.student_id, row.activity_name, row.activity_date].join('\u0000');
+  return [row.student_id, row.activity_name, row.activity_date, row.is_adjustment ? `${row.hours}:${row.adjustment_reason}` : 'normal'].join('\u0000');
 }
 
 // 辅助函数：校验日期
@@ -564,13 +643,14 @@ function isValidDate(dateInput) {
 }
 
 // 辅助函数：检查是否重复
-async function checkDuplicateRecord(studentId, activityName, activityDate) {
+async function checkDuplicateRecord(studentId, activityName, activityDate, adjustment = false, hours = 0, reason = '', executor = db) {
   const query = `
     SELECT 1 FROM volunteer_logs
     WHERE student_id = $1 AND activity_name = $2 AND activity_date = $3 AND status = 'approved'
+      AND is_adjustment = $4 AND ($4 = false OR (hours = $5 AND adjustment_reason = $6))
     LIMIT 1
   `;
-  const { rows } = await db.query(query, [studentId, activityName, activityDate]);
+  const { rows } = await executor.query(query, [studentId, activityName, activityDate, adjustment, hours, reason]);
   return rows.length > 0;
 }
 

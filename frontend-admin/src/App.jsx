@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import AcademicSummaryPage from "./AcademicSummaryPage";
+import StudentLookupPage from "./StudentLookupPage";
 import {
   Activity,
   AlertTriangle,
@@ -62,6 +64,7 @@ const modules = [
   { id: "overview", label: "概览", icon: Home },
   { id: "activities", label: "活动", icon: Activity },
   { id: "lookup", label: "学生查询", icon: Search },
+  { id: "academic", label: "学年汇总", icon: BarChart3 },
   { id: "submit", label: "填报", icon: ClipboardList },
   { id: "review", label: "审核", icon: CheckSquare },
   { id: "problems", label: "问题复核", icon: AlertTriangle },
@@ -73,6 +76,8 @@ const modules = [
 ];
 
 const emptyActivity = {
+  academic_year: "",
+  academic_term: "",
   name: "",
   start_time: "",
   end_time: "",
@@ -181,6 +186,7 @@ function App() {
         {activeModule === "overview" && <OverviewPage go={setActiveModule} />}
         {activeModule === "activities" && <ActivitiesPage />}
         {activeModule === "lookup" && <StudentLookupPage />}
+        {activeModule === "academic" && <AcademicSummaryPage />}
         {activeModule === "submit" && <SubmitPage />}
         {activeModule === "review" && <ReviewPage />}
         {activeModule === "problems" && <ProblemReviewPage go={setActiveModule} />}
@@ -342,6 +348,7 @@ function OverviewPage({ go }) {
 }
 
 function ActivitiesPage() {
+  const [academicFilter, setAcademicFilter] = useState({ year: "", term: "" });
   const [activities, setActivities] = useState([]);
   const [form, setForm] = useState(emptyActivity);
   const [editingId, setEditingId] = useState("");
@@ -385,6 +392,8 @@ function ActivitiesPage() {
   function edit(activity) {
     setEditingId(activity.id);
     setForm({
+      academic_year: activity.academic_year_inferred ? "" : activity.academic_year || "",
+      academic_term: activity.academic_term_inferred ? "" : activity.academic_term || "",
       name: activity.name || "",
       start_time: toLocalInput(activity.start_time),
       end_time: toLocalInput(activity.end_time),
@@ -420,6 +429,8 @@ function ActivitiesPage() {
           <Field label="开始时间"><input type="datetime-local" value={form.start_time} onChange={(e) => setForm({ ...form, start_time: e.target.value })} required /></Field>
           <Field label="结束时间"><input type="datetime-local" value={form.end_time} onChange={(e) => setForm({ ...form, end_time: e.target.value })} required /></Field>
           <Field label="地点"><input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} /></Field>
+          <Field label="学年（留空按日期归类）"><input value={form.academic_year} onChange={(e) => setForm({ ...form, academic_year: e.target.value })} placeholder="2025-2026" /></Field>
+          <Field label="阶段"><select value={form.academic_term} onChange={(e) => setForm({ ...form, academic_term: e.target.value })}><option value="">按月份自动归类</option><option value="upper">上半年</option><option value="lower">下半年</option><option value="vacation">寒暑假补录</option></select></Field>
           <Field label="负责单位"><input value={form.org_name} onChange={(e) => setForm({ ...form, org_name: e.target.value })} /></Field>
           <Field label="描述"><input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
           <div className="form-actions">
@@ -429,11 +440,14 @@ function ActivitiesPage() {
         </form>
       </Panel>
 
+      <div className="toolbar"><label>学年 <select value={academicFilter.year} onChange={(e) => setAcademicFilter({ ...academicFilter, year: e.target.value })}><option value="">全部学年</option>{[...new Set(activities.map((a) => a.academic_year).filter(Boolean))].sort().reverse().map((year) => <option key={year}>{year}</option>)}</select></label><label>阶段 <select value={academicFilter.term} onChange={(e) => setAcademicFilter({ ...academicFilter, term: e.target.value })}><option value="">全部阶段</option><option value="upper">上半年</option><option value="lower">下半年</option><option value="vacation">寒暑假补录</option></select></label></div>
       <Panel title="活动列表">
         <DataTable
-          columns={["名称", "时间", "地点", "单位", "状态", "操作"]}
-          rows={activities.map((activity) => [
+          columns={["名称", "学年", "阶段", "时间", "地点", "单位", "状态", "操作"]}
+          rows={activities.filter((a) => (!academicFilter.year || a.academic_year === academicFilter.year) && (!academicFilter.term || a.academic_term === academicFilter.term)).map((activity) => [
             activity.name,
+            activity.academic_year || "待确认",
+            activity.term_label || "待确认",
             `${formatDateTime(activity.start_time)} - ${formatDateTime(activity.end_time)}`,
             activity.location || "-",
             activity.org_name || "-",
@@ -885,7 +899,7 @@ function ProblemReviewPage({ go }) {
               <Field label="活动名称"><input value={reviewForm.activity_name} onChange={(e) => setReviewForm({ ...reviewForm, activity_name: e.target.value })} required /></Field>
               <Field label="时间说明"><input value={reviewForm.activity_period} onChange={(e) => setReviewForm({ ...reviewForm, activity_period: e.target.value })} /></Field>
               <Field label="活动日期"><input type="date" value={reviewForm.activity_date} onChange={(e) => setReviewForm({ ...reviewForm, activity_date: e.target.value })} required /></Field>
-              <Field label="服务时长"><input type="number" step="0.1" min="0.1" value={reviewForm.hours} onChange={(e) => setReviewForm({ ...reviewForm, hours: e.target.value })} required /></Field>
+              <Field label="服务时长"><input type="number" step="0.1" min="-9999.9" max="9999.9" value={reviewForm.hours} onChange={(e) => setReviewForm({ ...reviewForm, hours: e.target.value })} required /></Field>
               <Field label="源表总时长"><input type="number" step="0.1" min="0.1" value={reviewForm.source_total_hours} onChange={(e) => setReviewForm({ ...reviewForm, source_total_hours: e.target.value })} /></Field>
               <Field label="复核备注"><textarea rows={3} value={reviewForm.note} onChange={(e) => setReviewForm({ ...reviewForm, note: e.target.value })} /></Field>
               <label className="field checkbox-field">
@@ -933,6 +947,7 @@ function ImportPage() {
   const [problemDefaults, setProblemDefaults] = useState({ default_activity_date: "", default_activity_name: "" });
   const [note, setNote] = useState("");
   const [replaceExistingNote, setReplaceExistingNote] = useState(false);
+  const [academicDefaults, setAcademicDefaults] = useState({ default_academic_year: "", default_academic_term: "", default_grade: "" });
   const [batches, setBatches] = useState([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -1029,12 +1044,13 @@ function ImportPage() {
         default_activity_date: problemDefaults.default_activity_date,
         default_activity_name: problemDefaults.default_activity_name.trim(),
         replace_existing_note: replaceExistingNote,
+        ...academicDefaults,
       });
       const skippedErrors = errorRows.length;
       const replaced = result.replaced_record_count
         ? `，替换历史记录 ${result.replaced_record_count} 条`
         : "";
-      setMessage(`导入成功：${result.count} 条，确认问题行 ${result.confirmed_problem_count || 0} 条，跳过错误行 ${skippedErrors} 条${replaced}`);
+      setMessage(`导入成功：${result.count} 条，跳过重复 ${result.skipped_duplicate_count || 0} 条${result.already_imported ? "（相同文件已导入）" : ""}，确认问题行 ${result.confirmed_problem_count || 0} 条，跳过错误行 ${skippedErrors} 条${replaced}`);
       setPreview(null);
       setFile(null);
       setConfirmedRows([]);
@@ -1055,6 +1071,10 @@ function ImportPage() {
             <Field label="Excel 文件">
               <input accept=".xlsx" type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
             </Field>
+<Field label="本批次学年（留空按行内学年或日期归类）"><input placeholder="2025-2026" value={academicDefaults.default_academic_year} onChange={(e) => setAcademicDefaults({ ...academicDefaults, default_academic_year: e.target.value })} /></Field>
+            <Field label="本批次归属阶段"><select value={academicDefaults.default_academic_term} onChange={(e) => setAcademicDefaults({ ...academicDefaults, default_academic_term: e.target.value })}><option value="">按行内阶段或日期归类</option><option value="upper">上半年</option><option value="lower">下半年</option><option value="vacation">寒暑假补录</option></select></Field>
+            <Field label="缺失年级默认值"><input placeholder="例如25级" value={academicDefaults.default_grade} onChange={(e) => setAcademicDefaults({ ...academicDefaults, default_grade: e.target.value })} /></Field>
+            <p>支持多个年级混合导入，按行内年级或年级工作表归类。重复文件和重复活动会跳过；扣减行须在模板中标记“调整”并填写原因。</p>
             <Field label="批次备注">
               <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="例如：2026年4月时长库" />
             </Field>
@@ -1081,14 +1101,14 @@ function ImportPage() {
           }
         >
           <ImportDiffReport report={diffReport} reimportHints={reimportHints} />
-          {reimportHints.matchingBatches.length > 0 && (
+          {(
             <label className="inline-check danger-check">
               <input
                 type="checkbox"
                 checked={replaceExistingNote}
                 onChange={(event) => setReplaceExistingNote(event.target.checked)}
               />
-              删除并替换备注完全一致的历史批次
+              本表为累计表：以固定备注替换同一数据集旧批次（首次导入也需勾选）
             </label>
           )}
           {(problemRows.length > 0 || errorRows.length > 0) && (
@@ -1117,7 +1137,7 @@ function ImportPage() {
             </div>
           )}
           <DataTable
-            columns={["确认", "工作表", "行", "学号", "姓名", "学院", "活动", "日期", "时长", "状态"]}
+            columns={["确认", "工作表", "行", "学号", "姓名", "学院", "年级", "学年", "归属", "活动", "日期", "时长", "状态"]}
             rows={preview.rows.map((row) => [
               row.status === "warning" ? (
                 <input
@@ -1133,6 +1153,9 @@ function ImportPage() {
               row.student_id,
               row.student_name,
               row.college,
+              row.grade || "待确认",
+              academicDefaults.default_academic_year || row.academic_year || "待确认",
+              { upper: "上半年", lower: "下半年", vacation: "寒暑假补录", unassigned: "待确认累计" }[academicDefaults.default_academic_term || row.academic_term] || "待确认",
               row.activity_name,
               row.activity_date,
               formatHours(row.hours),
@@ -1140,76 +1163,6 @@ function ImportPage() {
             ])}
           />
         </Panel>
-      )}
-    </section>
-  );
-}
-
-function StudentLookupPage() {
-  const [mode, setMode] = useState('student_id');
-  const [value, setValue] = useState('');
-  const [result, setResult] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  async function submit(event) {
-    event.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      setResult(await searchStudent(mode, value.trim()));
-    } catch (err) {
-      setResult(null);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <section className="dashboard-section">
-      <SectionTitle title="学生时长查询" subtitle="按学号、姓名或校验码查找已审核记录" />
-      <Notice type="error" message={error} />
-      <form className="lookup-form" onSubmit={submit}>
-        <select aria-label="查询方式" value={mode} onChange={(event) => { setMode(event.target.value); setResult(null); }}>
-          <option value="student_id">学号</option>
-          <option value="student_name">姓名</option>
-          <option value="verification_code">校验码</option>
-        </select>
-        <input
-          aria-label="查询内容"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          placeholder={mode === 'verification_code' ? '输入 12 位校验码' : `输入${mode === 'student_id' ? '学号' : '姓名'}`}
-          required
-        />
-        <button className="primary-button" type="submit" disabled={loading}><Search size={16} />{loading ? '查询中' : '查询'}</button>
-      </form>
-      {result && (
-        <div className="lookup-results">
-          <p className="lookup-count">匹配 {result.total_matches} 人{result.truncated ? '，仅展示前 20 人' : ''}</p>
-          {result.matches.length === 0 && <div className="empty-state">没有匹配的已审核记录</div>}
-          {result.matches.map((student) => (
-            <section className="lookup-result" key={`${student.student_id}-${student.student_name}`}>
-              <div className="lookup-result-head">
-                <div>
-                  <h3>{student.student_name} <small>{student.student_id}</small></h3>
-                  <p>{student.college || '学院未填写'} · {student.grade || '年级未填写'} · 校验码 {student.verification_code}</p>
-                </div>
-                <strong>{formatHours(student.total_hours)} 小时</strong>
-              </div>
-              <DataTable
-                columns={['活动名称', '时间说明', '时长', '来源']}
-                rows={(student.records || []).map((record) => [
-                  record.activity_name,
-                  record.activity_time_label || record.activity_period || record.activity_date || '-',
-                  `${formatHours(record.hours)} 小时`,
-                  record.source_label || record.source || '-',
-                ])}
-              />
-            </section>
-          ))}
-        </div>
       )}
     </section>
   );
