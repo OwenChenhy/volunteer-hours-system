@@ -100,10 +100,16 @@ fastify.addHook('preHandler', authenticate);
     const activity = actRes.rows[0];
     if (!hasFullAccess(request.user) && activity.created_by !== request.user.id) return reply.code(403).send({ message: '只能提交自己负责活动的记录' });
     for (const record of records) {
+      if (request.user.role === 'college_admin' && !record.college) record.college = normalizeCollegeName(request.user.org_name);
       if (!String(record.student_id || '').trim() || !String(record.student_name || '').trim() || !Number.isFinite(record.hours) || record.hours <= 0 || record.hours > 9999.9) return reply.code(400).send({ message: '学生身份和正数服务时长必须有效' });
       const college = normalizeCollegeName(record.college);
+      if (request.user.role === 'college_admin' && college !== normalizeCollegeName(request.user.org_name)) return reply.code(403).send({ message: '只能提交所属学院的学生记录' });
       if (college && !isFormalCollegeName(college)) {
         return reply.code(400).send({ message: `学院不在正式名称列表：${college}` });
+      }
+      if (!record.grade) {
+        const known = await db.query("SELECT grade FROM volunteer_logs WHERE student_id=$1 AND student_name=$2 AND college=$3 AND grade IS NOT NULL AND grade<>'' ORDER BY activity_date DESC,created_at DESC LIMIT 1", [String(record.student_id).trim(), String(record.student_name).trim(), college]);
+        record.grade = known.rows[0]?.grade || null;
       }
     }
 

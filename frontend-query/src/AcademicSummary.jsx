@@ -18,7 +18,7 @@ export default function AcademicSummary({ result }) {
   useEffect(() => {
     if (!year) return;
     const controller = new AbortController(); setData(null); setError('');
-    fetch(`${API_BASE}/api/v1/query/summary`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', signal: controller.signal, body: JSON.stringify({ student_id: id, student_name: name, academic_year: year, page, limit: 25 }) })
+    fetch(`${API_BASE}/api/v1/query/summary`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', signal: controller.signal, body: JSON.stringify({ student_id: id, student_name: name, academic_year: year, publication_id: result.data_version?.publication_id, page, limit: 25 }) })
       .then(async (response) => { const payload = await response.json(); if (!response.ok) throw new Error(payload.message || '汇总表读取失败'); return payload; })
       .then((payload) => { if (!controller.signal.aborted) setData(payload); })
       .catch((err) => { if (!controller.signal.aborted) setError(err.message); });

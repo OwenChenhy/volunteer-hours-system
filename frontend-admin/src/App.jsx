@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import AcademicSummaryPage from "./AcademicSummaryPage";
 import StudentLookupPage from "./StudentLookupPage";
+import PublicationPage from "./PublicationPage";
 import {
   Activity,
   AlertTriangle,
@@ -67,6 +68,7 @@ const modules = [
   { id: "academic", label: "学年汇总", icon: BarChart3 },
   { id: "submit", label: "填报", icon: ClipboardList },
   { id: "review", label: "审核", icon: CheckSquare },
+  { id: "publication", label: "统一发布", icon: UploadCloud },
   { id: "problems", label: "问题复核", icon: AlertTriangle },
   { id: "import", label: "导入", icon: UploadCloud },
   { id: "stats", label: "统计", icon: BarChart3 },
@@ -189,6 +191,7 @@ function App() {
         {activeModule === "academic" && <AcademicSummaryPage />}
         {activeModule === "submit" && <SubmitPage />}
         {activeModule === "review" && <ReviewPage />}
+        {activeModule === "publication" && <PublicationPage />}
         {activeModule === "problems" && <ProblemReviewPage go={setActiveModule} />}
         {activeModule === "import" && <ImportPage />}
         {activeModule === "stats" && <StatsPage go={setActiveModule} />}

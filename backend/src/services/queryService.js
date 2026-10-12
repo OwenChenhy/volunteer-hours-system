@@ -1,5 +1,5 @@
+const publication = require('./publicationService');
 const db = require('../db');
-const cache = require('../cache/redis');
 const crypto = require('crypto');
 const academic = require('./academicService');
 
@@ -9,51 +9,35 @@ async function queryStudentLogs(student_id, student_name, college = null) {
   // 严格比对学号和姓名，去除空格
   const sId = student_id.trim();
   const sName = student_name.trim();
-  const dataVersion = await getDataVersion();
-  const cacheKey = `query:v4:${dataVersion.revision}:${sId}:${sName}:${college || ''}`;
-
-  const cached = await cache.getJson(cacheKey);
-  if (cached) return cached;
-
-  const collegeFilter = college ? 'AND college = $3' : '';
-  const query = `
-    SELECT 
-      id, student_id, student_name, college, grade, academic_year, academic_term, is_adjustment,
-      activity_name, activity_date, activity_period, hours, source,
-      import_detail_status, source_total_hours, created_at
-    FROM volunteer_logs
-    WHERE student_id = $1 AND student_name = $2 AND status = 'approved'
-      ${collegeFilter}
-    ORDER BY activity_date DESC, created_at DESC
-  `;
-
-  const result = await db.query(query, college ? [sId, sName, college] : [sId, sName]);
-  
-  if (result.rows.length === 0) return null;
-
-  const totalHours = Math.round(result.rows.reduce((sum, row) => sum + parseFloat(row.hours), 0) * 10) / 10;
-  
-  const academicSummaries = academic.summarize(result.rows);
+  const state = await publication.current();
+  const rows = (state.people.get(publication.identityKey(sId, sName)) || []).filter(row => !college || row.college === college);
+  const progress = (await publication.progress(state, sId, sName)).filter(row => !college || row.college === college);
+  if (!rows.length && !progress.length) return null;
+  const person = rows[0] || progress[0];
+  const dataVersion = publication.meta(state);
+  const publishedRows = rows.map(row => ({ ...row, academic_year: row.classified_year, academic_term: row.classified_term }));
+  const totalHours = rows.reduce((sum, row) => sum + Math.round(Number(row.hours) * 10), 0) / 10;
+  const academicSummaries = academic.summarize(publishedRows);
   for (const summary of academicSummaries) {
     if (!summary.academic_year) continue;
-    const cohort = await academic.getSummary({ academic_year: summary.academic_year, college: result.rows[0].college, grade: result.rows[0].grade, student_id: sId });
+    const cohort = publication.summary(state, { academic_year: summary.academic_year, college: person.college, grade: person.grade, student_id: sId });
     summary.rank = cohort.rows.find((row) => row.student_name === sName)?.rank || null;
     summary.total_students = cohort.total_students;
   }
   const payload = {
-    student_id: result.rows[0].student_id,
-    student_name: result.rows[0].student_name,
-    college: result.rows[0].college,
-    grade: result.rows[0].grade,
+    student_id: sId,
+    student_name: sName,
+    college: person.college,
+    grade: person.grade,
     total_hours: totalHours,
     academic_summaries: academicSummaries,
     academic_rules: academic.rules(),
     data_version: dataVersion,
-    verification_code: makeVerificationCode(sId, sName, totalHours, result.rows.length, dataVersion?.batch_id),
-    records: result.rows.map((r, index) => toPublicRecord(r, index))
+    verification_code: makeVerificationCode(sId, sName, totalHours, rows.length, dataVersion?.batch_id),
+    records: publishedRows.map((r, index) => toPublicRecord(r, index)),
+    review_progress: progress
   };
 
-  await cache.setJson(cacheKey, payload, 300);
   return payload;
 }
 
@@ -114,36 +98,30 @@ function formatDate(value) {
 }
 
 async function getDataVersion() {
-  const revisionResult = await db.query('SELECT revision, updated_at FROM data_versions WHERE id = true');
-  const version = revisionResult.rows[0];
-  const email = String(process.env.FEEDBACK_EMAIL || '').trim();
-  const publicMeta = { revision: String(version?.revision || '0'), academic_rules: academic.rules(), feedback_email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null };
-  const result = await db.query(`
-    SELECT id AS batch_id, filename, note, record_count, created_at
-    FROM import_batches
-    ORDER BY created_at DESC
-    LIMIT 1
-  `);
-  const batch = result.rows[0];
-  if (!batch) {
-    return {
-      ...publicMeta,
-      source_name: '暂无导入批次',
-      last_updated_at: version?.updated_at || null,
-      note: null,
-      record_count: 0,
-    };
+  return publication.meta(await publication.current());
+}
+
+async function getDraftDataVersion() {
+  const version = (await db.query('SELECT revision, updated_at FROM data_versions WHERE id=true')).rows[0];
+  return { revision: String(version?.revision || '0'), last_updated_at: version?.updated_at, academic_rules: academic.rules() };
+}
+
+async function queryDraftStudentLogs(studentId, studentName, college = null) {
+  const params = [studentId.trim(), studentName.trim()];
+  if (college) params.push(college);
+  const rows = (await db.query(`SELECT id,student_id,student_name,college,grade,academic_year,academic_term,is_adjustment,activity_name,activity_date,activity_period,hours,source,import_detail_status,source_total_hours,created_at
+    FROM volunteer_logs WHERE student_id = $1 AND student_name = $2 AND status = 'approved' ${college ? 'AND college = $3' : ''} ORDER BY activity_date DESC,created_at DESC`, params)).rows;
+  if (!rows.length) return null;
+  const summaries = academic.summarize(rows);
+  for (const item of summaries) {
+    if (!item.academic_year) continue;
+    const scope = await academic.getSummary({ academic_year: item.academic_year, college: rows[0].college, grade: rows[0].grade, student_id: studentId.trim() });
+    item.rank = scope.rows.find(row => row.student_name === studentName.trim())?.rank || null;
+    item.total_students = scope.total_students;
   }
-  return {
-    ...publicMeta,
-    source_name: batch.note || batch.filename,
-    batch_id: batch.batch_id,
-    filename: batch.filename,
-    note: batch.note,
-    record_count: batch.record_count,
-    last_updated_at: version?.updated_at || batch.created_at,
-    precision_note: '项目数据来源于公示时长库，查询时长仅供参考',
-  };
+  const totalHours = rows.reduce((sum, row) => sum + Math.round(Number(row.hours) * 10), 0) / 10;
+  const version = await getDraftDataVersion();
+  return { student_id: studentId.trim(), student_name: studentName.trim(), college: rows[0].college, grade: rows[0].grade, total_hours: totalHours, academic_summaries: summaries, academic_rules: academic.rules(), data_version: version, verification_code: makeVerificationCode(studentId, studentName, totalHours, rows.length, version.revision), records: rows.map(toPublicRecord) };
 }
 
 function makeVerificationCode(studentId, studentName, totalHours, recordCount, batchId) {
@@ -159,5 +137,7 @@ module.exports = {
   queryStudentLogs,
   queryLogs: queryStudentLogs,
   getDataVersion,
+  getDraftDataVersion,
+  queryDraftStudentLogs,
   makeVerificationCode,
 };

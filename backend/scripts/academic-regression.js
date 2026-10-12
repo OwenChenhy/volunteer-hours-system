@@ -11,7 +11,7 @@ if (testUrl) {
 const db = require('../src/db');
 const academic = require('../src/services/academicService');
 const { parsePreview, confirmImport } = require('../src/services/importService');
-const { queryStudentLogs, getDataVersion } = require('../src/services/queryService');
+const { queryDraftStudentLogs: queryStudentLogs, getDraftDataVersion: getDataVersion } = require('../src/services/queryService');
 
 async function workbook(rows, sheet = '25级') {
   const book = new ExcelJS.Workbook();

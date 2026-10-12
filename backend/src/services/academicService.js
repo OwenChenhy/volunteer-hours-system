@@ -112,4 +112,4 @@ async function getSummary(options = {}) {
   return { academic_year: options.academic_year, page, limit, total_students: totalStudents, rows: result.rows.map((row) => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, key.endsWith('_hours') || key === 'rank' || key === 'total_students' ? Number(value) : value]))) };
 }
 
-module.exports = { TERM_LABELS, rules, validYear, validDate, classify, summarize, getSummary };
+module.exports = { TERM_LABELS, rules, validYear, validDate, classify, summarize, expressions, getSummary };

@@ -18,6 +18,8 @@ TABLES = [
     ("import_batches", "id"),
     ("operation_logs", "id"),
     ("volunteer_logs", "id"),
+    ("publication_batches", "id"),
+    ("publication_state", "id"),
     ("review_notes", "id"),
 ]
 

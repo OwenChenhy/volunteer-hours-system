@@ -43,6 +43,7 @@ function normalizeResult(data) {
       grade: student.grade || '未填写'
     },
     academic_summaries: data.academic_summaries || [],
+    review_progress: data.review_progress || [],
     total_hours: Number(data.total_hours || student.total_hours || 0),
     data_version: dataVersion,
     verification_code: data.verification_code || data.verificationCode || student.verification_code || '',
@@ -212,7 +213,6 @@ function App() {
   const [timeFilter, setTimeFilter] = useState(ALL);
   const [sortBy, setSortBy] = useState('time_desc');
   const [groupBy, setGroupBy] = useState('none');
-  const [refreshStatus, setRefreshStatus] = useState('');
 
   useEffect(() => {
     let alive = true;
@@ -241,31 +241,6 @@ function App() {
       .catch(() => {});
     return () => { alive = false; };
   }, []);
-
-useEffect(() => {
-    if (!result) return;
-    const identity = { student_id: result.student.student_id, student_name: result.student.student_name };
-    const controller = new AbortController();
-    const timer = setInterval(async () => {
-      if (document.visibilityState === 'hidden') return;
-      try {
-        const response = await fetch(`${API_BASE}/api/v1/query/meta`, { cache: 'no-store', signal: controller.signal });
-        if (!response.ok) throw new Error('版本检查失败');
-        const meta = await response.json();
-        if (controller.signal.aborted) return;
-        setDataMeta(meta);
-        if (String(meta.revision) !== String(result.data_version?.revision)) {
-          const updated = await fetch(`${API_BASE}/api/v1/query`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', signal: controller.signal, body: JSON.stringify(identity) });
-          if (controller.signal.aborted) return;
-          if (updated.status === 404) { setResult(null); setMessage('人员信息已更新，请按最新学号和姓名重新查询。'); return; }
-          if (!updated.ok) throw new Error('刷新失败');
-          const payload = await updated.json();
-          if (!controller.signal.aborted) { setResult(normalizeResult(payload)); setRefreshStatus('已同步最新时长'); }
-        }
-      } catch (err) { if (!controller.signal.aborted) setRefreshStatus('暂未完成自动更新，请稍后重新查询'); }
-    }, 30000);
-    return () => { clearInterval(timer); controller.abort(); };
-  }, [result?.student.student_id, result?.student.student_name, result?.data_version?.revision]);
 
   const activeVersion = result?.data_version || dataMeta;
 
@@ -339,7 +314,7 @@ useEffect(() => {
           throw new Error('查询过于频繁，请稍后再试。');
         }
         if (response.status === 404) {
-          throw new Error('未查到匹配记录。可能原因：学号或姓名与公示数据不一致、记录尚未通过审核，或当前数据批次暂未覆盖该学生。');
+          throw new Error('未查到匹配记录。请核对学号和姓名，或联系学院确认是否已提交活动名单。');
         }
         throw new Error(data.message || '查询失败，请稍后再试。');
       }
@@ -363,7 +338,7 @@ useEffect(() => {
           <div className="heading-block">
             <p className="kicker">重庆理工大学</p>
             <h1 id="page-title">志愿时长查询</h1>
-            <p className="subtitle">输入本人学号和姓名，查询已通过审核的志愿服务时长。</p>
+            <p className="subtitle">输入本人学号和姓名，查询已发布志愿时长及本人活动审核进度。</p>
           </div>
           <div className="version-card" aria-label="当前数据版本">
             <span>数据版本</span>
@@ -435,7 +410,7 @@ useEffect(() => {
               </dl>
             </div>
             <div className="total-hours">
-              <span>累计总时长</span>
+              <span>已发布累计时长</span>
               <strong>{formatHours(result.total_hours)}</strong>
               <span>小时</span>
             </div>
@@ -464,7 +439,11 @@ useEffect(() => {
           )}
 
           <AcademicSummary result={result} />
-          <p role="status" className="data-note">{refreshStatus || "页面每30秒检查更新，管理员修改后无需等待人工转发表格。"}</p>
+          <p className="data-note">正式时长与排名以统一发布的累计库为准。新活动审核完成后统一公示；重新查询可查看本人最新审核进度。</p>
+          <section className="academic-summary" aria-label="本人活动审核进度">
+            <div className="records-header"><div><h3>本人活动审核进度</h3><p>以下活动尚未计入当前公示时长和排名。</p></div><button type="button" className="secondary-button" disabled={loading} onClick={handleSubmit}>重新查询进度</button></div>
+            {result.review_progress.length ? <div className="table-wrap"><table><thead><tr><th>活动</th><th>日期</th><th>申报时长</th><th>审核进度</th><th>说明</th></tr></thead><tbody>{result.review_progress.map((item, index) => <tr key={index}><td>{item.activity_name}</td><td>{item.activity_date}</td><td>{formatHours(item.hours)} 小时</td><td>{item.status_label}</td><td>{item.reject_reason || '等待办公室审核完成后统一发布'}</td></tr>)}</tbody></table></div> : <p>当前没有尚未发布的活动记录。</p>}
+          </section>
           <div className="records-header">
             <div>
               <h3>活动明细</h3>

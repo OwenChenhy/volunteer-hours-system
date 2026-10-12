@@ -16,7 +16,7 @@ db.query = async (sql) => {
 };
 
 const { parsePreview } = require('../src/services/importService');
-const { queryStudentLogs } = require('../src/services/queryService');
+const { queryDraftStudentLogs: queryStudentLogs } = require('../src/services/queryService');
 const { buildApp } = require('../src/app');
 const { extractActivities, extractActivityDetails } = require('../../tools/prepare-march-public-detail-import');
 
@@ -34,7 +34,8 @@ async function buildProductFixture() {
 async function main() {
   assert(hasFullAccess({ role: 'super_admin' }), 'super_admin should have full access');
   assert(hasCapability('data_admin', 'import:manage'), 'data_admin should manage imports');
-  assert(hasCapability('college_admin', 'reviews:manage'), 'college_admin should review scoped records');
+  assert(!hasCapability('college_admin', 'reviews:manage'), 'college_admin submits records; office reviewers manage approval');
+  assert(hasCapability('college_admin', 'activities:write') && hasCapability('college_admin', 'logs:submit'), 'college_admin should submit its activities and participants');
   assert(!hasCapability('auditor', 'reviews:manage'), 'auditor must stay read-only');
 
   const malformedActivities = extractActivities('世预赛活动志愿者（16小时）暑期三下乡活动（56小时、校区迎新志愿服务活动（16小时）、渝超足球联赛志愿活动 （8小时）');

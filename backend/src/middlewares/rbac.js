@@ -19,10 +19,10 @@ const ROLE_CAPABILITIES = {
     'audit:read',
   ],
   college_admin: [
-    'logs:review',
+    'activities:write',
+    'logs:submit',
     'stats:read',
     'reviews:read',
-    'reviews:manage',
     'audit:read',
   ],
   auditor: [

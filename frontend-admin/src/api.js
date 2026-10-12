@@ -289,3 +289,5 @@ async function downloadFile(path, filename) {
 }
 
 export function getAcademicSummary(params) { return request(`/stats/academic-summary${toQuery(params)}`); }
+export const getPublicationStatus = () => request('/publications');
+export const publishHours = (body) => request('/publications', { method: 'POST', body: JSON.stringify(body) });

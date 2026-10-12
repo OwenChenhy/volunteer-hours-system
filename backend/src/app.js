@@ -25,7 +25,8 @@ function buildApp() {
   // 限流配置（默认 1 分钟 100 次，查询接口单独在路由中覆盖）
   app.register(rateLimit, {
     max: 100,
-    timeWindow: '1 minute'
+    timeWindow: '1 minute',
+    keyGenerator: (request) => request.headers['x-real-ip'] || request.ip
   });
 
   // 路由注册
@@ -39,6 +40,7 @@ function buildApp() {
   app.register(require('./routes/reviews'), { prefix: '/api/v1/reviews' });
   app.register(require('./routes/ops'), { prefix: '/api/v1/ops' });
   app.register(require('./routes/adminSearch'), { prefix: '/api/v1/admin-search' });
+  app.register(require('./routes/publications'), { prefix: '/api/v1/publications' });
   app.register(require('./routes/publicStatus'), { prefix: '/api/v1/ops/public-status' });
 
   // 健康检查
@@ -53,6 +55,7 @@ const start = async () => {
   const app = buildApp();
   try {
     await ensureSchema();
+    await require('./services/publicationService').current();
     const port = process.env.PORT || 3000;
     await app.listen({ port, host: '0.0.0.0' });
     app.log.info(`服务器运行在 http://localhost:${port}`);

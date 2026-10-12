@@ -1,7 +1,7 @@
 const db = require('../db');
 const { authenticate } = require('../middlewares/auth');
 const { requireCapability } = require('../middlewares/rbac');
-const { getDataVersion, makeVerificationCode, queryStudentLogs } = require('../services/queryService');
+const { getDraftDataVersion: getDataVersion, makeVerificationCode, queryDraftStudentLogs: queryStudentLogs } = require('../services/queryService');
 const { normalizeCollegeName } = require('../utils/collegeNames');
 
 module.exports = async function (fastify) {
