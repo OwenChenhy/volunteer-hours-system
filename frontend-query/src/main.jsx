@@ -57,12 +57,12 @@ function normalizeRecord(record, index) {
   const activityPeriod = sanitizePublicText(record.activity_period, '');
   const rawTime = sanitizePublicText(record.activity_time_label || activityPeriod || record.activity_date || '', '累计记录');
   const isSummaryRecord = Boolean(record.is_summary_record) || isLegacyPlaceholder(record.activity_name) || isLegacyPlaceholder(record.activity_period);
-  const timeScope = isSummaryRecord
+  const timeScope = activityPeriod === '2026年10月之前导入的活动' ? '历史导入' : isSummaryRecord
     ? '累计记录'
     : activityPeriod
       ? '记录周期'
     : record.activity_date
-      ? '公示日期'
+      ? '活动日期'
       : '未标明';
 
   return {
@@ -121,14 +121,15 @@ function getBatchId(version) {
 }
 
 function getTimeNote(scope) {
+  if (scope === '历史导入') return '2026年10月之前导入的活动，未提供可靠发生日期。';
   if (scope === '累计记录') {
     return '该记录为累计项，未提供单独活动名称或发生日期。';
   }
   if (scope === '记录周期') {
     return '该记录展示的是活动所属栏目、学期或公示周期，不代表活动真实发生日期。';
   }
-  if (scope === '公示日期') {
-    return '此日期来自公示或系统记录，仅用于查询排序，不代表活动真实发生日期。';
+  if (scope === '活动日期') {
+    return '由提交人或导入文件提供的活动发生日期；导入时间由系统单独记录。';
   }
   return '来源数据未提供可展示的时间说明。';
 }

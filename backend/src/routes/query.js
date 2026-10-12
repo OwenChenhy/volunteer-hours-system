@@ -33,11 +33,11 @@ fastify.get('/meta', { config: sharedCampusLimit }, async (request, reply) => {
     config: { rateLimit: rateLimitConfig },
     schema: { body: { type: 'object', required: ['student_id', 'student_name', 'academic_year'], properties: {
       student_id: { type: 'string', minLength: 1, maxLength: 32 }, student_name: { type: 'string', minLength: 1, maxLength: 64 },
-      academic_year: { type: 'string', pattern: '^20[0-9]{2}-20[0-9]{2}$' }, publication_id: { type: 'string' }, page: { type: 'integer', minimum: 1, maximum: 100000 }, limit: { type: 'integer', minimum: 1, maximum: 100 }
+      academic_year: { type: 'string', pattern: '^(legacy|20[0-9]{2}-20[0-9]{2})$' }, publication_id: { type: 'string' }, page: { type: 'integer', minimum: 1, maximum: 100000 }, limit: { type: 'integer', minimum: 1, maximum: 100 }
     } } }
   }, async (request, reply) => {
     const input = request.body;
-    if (!academic.validYear(input.academic_year)) return reply.code(400).send({ message: '学年必须为相邻两年' });
+    if (!academic.validSummaryPeriod(input.academic_year)) return reply.code(400).send({ message: '请选择历史导入或填写连续两年的学年' });
     const state = await publication.current();
     if (input.publication_id && input.publication_id !== state.batch.id) return reply.code(409).send({ message: '公示版本已更新，请重新查询本人后查看排名' });
     const person = state.people.get(publication.identityKey(input.student_id.trim(), input.student_name.trim()))?.[0];

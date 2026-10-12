@@ -117,7 +117,7 @@ function meta(state) {
 }
 
 function summary(state, options) {
-  if (!academic.validYear(options.academic_year)) throw new Error('学年必须为连续的 YYYY-YYYY');
+  if (!academic.validSummaryPeriod(options.academic_year)) throw new Error('请选择历史导入或填写连续两年的学年');
   const all = state.scopes.get(key(options.academic_year, options.college || null, options.grade || null)) || [];
   const page = Math.max(1, Math.floor(Number(options.page) || 1));
   const limit = Math.max(1, Math.min(100, Math.floor(Number(options.limit) || 50)));

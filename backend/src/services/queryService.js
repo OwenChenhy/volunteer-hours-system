@@ -58,6 +58,7 @@ function toPublicRecord(row, index) {
     hours: parseFloat(row.hours),
     source: row.source,
     source_label: row.source === 'online' ? '在线记录' : '导入记录',
+    imported_at: row.source === 'imported' ? row.created_at : null,
     detail_status: row.import_detail_status || null,
     is_summary_record: isSummaryRecord,
     time_note: isSummaryRecord
@@ -91,6 +92,7 @@ function isLegacyPlaceholder(value) {
 }
 
 function formatDate(value) {
+  if (!value) return null;
   if (value instanceof Date) {
     return value.toISOString().split('T')[0];
   }

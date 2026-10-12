@@ -1,4 +1,5 @@
 const db = require('../db');
+const { LEGACY_LABEL } = require('./academicService');
 
 async function getOverview() {
   const stats = await db.query(`
@@ -29,7 +30,8 @@ async function getByCollege() {
 
 async function getByMonth() {
   const result = await db.query(`
-    SELECT to_char(date_trunc('month', activity_date), 'YYYY-MM') as month,
+    SELECT CASE WHEN activity_date IS NULL THEN '${LEGACY_LABEL}'
+           ELSE to_char(date_trunc('month', activity_date), 'YYYY-MM') END as month,
            SUM(hours) as total_hours,
            COUNT(*) as record_count
     FROM volunteer_logs

@@ -395,6 +395,7 @@ function ActivitiesPage() {
   function edit(activity) {
     setEditingId(activity.id);
     setForm({
+      historical: !activity.start_time,
       academic_year: activity.academic_year_inferred ? "" : activity.academic_year || "",
       academic_term: activity.academic_term_inferred ? "" : activity.academic_term || "",
       name: activity.name || "",
@@ -429,8 +430,8 @@ function ActivitiesPage() {
       <Panel title={editingId ? "编辑活动" : "创建活动"}>
         <form className="form-grid" onSubmit={save}>
           <Field label="活动名称"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></Field>
-          <Field label="开始时间"><input type="datetime-local" value={form.start_time} onChange={(e) => setForm({ ...form, start_time: e.target.value })} required /></Field>
-          <Field label="结束时间"><input type="datetime-local" value={form.end_time} onChange={(e) => setForm({ ...form, end_time: e.target.value })} required /></Field>
+          <Field label="开始时间"><input type="datetime-local" value={form.start_time} onChange={(e) => setForm({ ...form, start_time: e.target.value })} required={!form.historical} /></Field>
+          <Field label="结束时间"><input type="datetime-local" value={form.end_time} onChange={(e) => setForm({ ...form, end_time: e.target.value })} required={!form.historical} /></Field>
           <Field label="地点"><input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} /></Field>
           <Field label="学年（留空按日期归类）"><input value={form.academic_year} onChange={(e) => setForm({ ...form, academic_year: e.target.value })} placeholder="2025-2026" /></Field>
           <Field label="阶段"><select value={form.academic_term} onChange={(e) => setForm({ ...form, academic_term: e.target.value })}><option value="">按月份自动归类</option><option value="upper">上半年</option><option value="lower">下半年</option><option value="vacation">寒暑假补录</option></select></Field>
@@ -443,15 +444,15 @@ function ActivitiesPage() {
         </form>
       </Panel>
 
-      <div className="toolbar"><label>学年 <select value={academicFilter.year} onChange={(e) => setAcademicFilter({ ...academicFilter, year: e.target.value })}><option value="">全部学年</option>{[...new Set(activities.map((a) => a.academic_year).filter(Boolean))].sort().reverse().map((year) => <option key={year}>{year}</option>)}</select></label><label>阶段 <select value={academicFilter.term} onChange={(e) => setAcademicFilter({ ...academicFilter, term: e.target.value })}><option value="">全部阶段</option><option value="upper">上半年</option><option value="lower">下半年</option><option value="vacation">寒暑假补录</option></select></label></div>
+      <div className="toolbar"><label>学年 / 历史范围 <select value={academicFilter.year} onChange={(e) => setAcademicFilter({ ...academicFilter, year: e.target.value })}><option value="">全部范围</option>{[...new Set(activities.map((a) => a.academic_year).filter(Boolean))].sort().reverse().map((year) => <option key={year} value={year}>{year === 'legacy' ? '2026年10月之前导入的活动' : year}</option>)}</select></label><label>阶段 <select value={academicFilter.term} onChange={(e) => setAcademicFilter({ ...academicFilter, term: e.target.value })}><option value="">全部阶段</option><option value="unassigned">历史累计 / 未分期</option><option value="upper">上半年</option><option value="lower">下半年</option><option value="vacation">寒暑假补录</option></select></label></div>
       <Panel title="活动列表">
         <DataTable
           columns={["名称", "学年", "阶段", "时间", "地点", "单位", "状态", "操作"]}
           rows={activities.filter((a) => (!academicFilter.year || a.academic_year === academicFilter.year) && (!academicFilter.term || a.academic_term === academicFilter.term)).map((activity) => [
             activity.name,
-            activity.academic_year || "待确认",
+            activity.academic_year === "legacy" ? "历史导入" : activity.academic_year || "待确认",
             activity.term_label || "待确认",
-            `${formatDateTime(activity.start_time)} - ${formatDateTime(activity.end_time)}`,
+            activity.start_time ? `${formatDateTime(activity.start_time)} - ${formatDateTime(activity.end_time)}` : "2026年10月之前导入的活动",
             activity.location || "-",
             activity.org_name || "-",
             <Badge key="status" tone={activity.status === "archived" ? "muted" : "green"}>{activity.status === "archived" ? "已归档" : "进行中"}</Badge>,
@@ -634,7 +635,7 @@ function ReviewPage() {
             />,
             `${log.student_name} / ${log.student_id}`,
             log.activity_name,
-            formatDate(log.activity_date),
+            log.activity_date ? formatDate(log.activity_date) : log.activity_period || "2026年10月之前导入的活动",
             formatHours(log.hours),
             <Badge key="source" tone={log.source === "imported" ? "orange" : "green"}>{log.source === "imported" ? "导入" : "在线"}</Badge>,
             <StatusBadge key="status" status={log.status} />,
@@ -901,7 +902,7 @@ function ProblemReviewPage({ go }) {
               <Field label="联系方式"><input value={reviewForm.phone} onChange={(e) => setReviewForm({ ...reviewForm, phone: e.target.value })} /></Field>
               <Field label="活动名称"><input value={reviewForm.activity_name} onChange={(e) => setReviewForm({ ...reviewForm, activity_name: e.target.value })} required /></Field>
               <Field label="时间说明"><input value={reviewForm.activity_period} onChange={(e) => setReviewForm({ ...reviewForm, activity_period: e.target.value })} /></Field>
-              <Field label="活动日期"><input type="date" value={reviewForm.activity_date} onChange={(e) => setReviewForm({ ...reviewForm, activity_date: e.target.value })} required /></Field>
+              <Field label="活动日期"><input type="date" value={reviewForm.activity_date} onChange={(e) => setReviewForm({ ...reviewForm, activity_date: e.target.value })} required={Boolean(sourceReview?.log?.activity_date)} /><small>历史活动日期未提供，可留空。</small></Field>
               <Field label="服务时长"><input type="number" step="0.1" min="-9999.9" max="9999.9" value={reviewForm.hours} onChange={(e) => setReviewForm({ ...reviewForm, hours: e.target.value })} required /></Field>
               <Field label="源表总时长"><input type="number" step="0.1" min="0.1" value={reviewForm.source_total_hours} onChange={(e) => setReviewForm({ ...reviewForm, source_total_hours: e.target.value })} /></Field>
               <Field label="复核备注"><textarea rows={3} value={reviewForm.note} onChange={(e) => setReviewForm({ ...reviewForm, note: e.target.value })} /></Field>
@@ -1268,8 +1269,9 @@ function StatsPage({ go }) {
         <Panel title="按学院统计">
           <DataTable columns={["学院", "总时长", "记录数"]} rows={college.map((row) => [row.college || "未填写", formatHours(row.total_hours), row.record_count])} />
         </Panel>
-        <Panel title="按月统计">
-          <DataTable columns={["月份", "总时长", "记录数"]} rows={month.map((row) => [row.month, formatHours(row.total_hours), row.record_count])} />
+        <Panel title="月份与历史导入统计">
+          <p>历史活动统一标记为2026年10月之前导入，不推算发生月份。新增活动按填写的真实活动日期分月统计。</p>
+          <DataTable columns={["月份 / 历史范围", "总时长", "记录数"]} rows={month.map((row) => [row.month, formatHours(row.total_hours), row.record_count])} />
         </Panel>
       </div>
     </section>
@@ -1679,8 +1681,8 @@ function CompactLogList({ rows }) {
 function activityPayload(form) {
   return {
     ...form,
-    start_time: new Date(form.start_time).toISOString(),
-    end_time: new Date(form.end_time).toISOString(),
+    start_time: form.start_time ? new Date(form.start_time).toISOString() : null,
+    end_time: form.end_time ? new Date(form.end_time).toISOString() : null,
   };
 }
 

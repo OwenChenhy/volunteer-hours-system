@@ -98,6 +98,7 @@ fastify.addHook('preHandler', authenticate);
       return reply.code(404).send({ message: '关联活动不存在' });
     }
     const activity = actRes.rows[0];
+    if (!activity.activity_date) return reply.code(400).send({ message: '历史活动未提供发生日期，请为新申报创建带真实日期的活动' });
     if (!hasFullAccess(request.user) && activity.created_by !== request.user.id) return reply.code(403).send({ message: '只能提交自己负责活动的记录' });
     for (const record of records) {
       if (request.user.role === 'college_admin' && !record.college) record.college = normalizeCollegeName(request.user.org_name);

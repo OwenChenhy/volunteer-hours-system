@@ -296,9 +296,9 @@ module.exports = async function (fastify, opts) {
         properties: {
           activity_name: { type: 'string' },
           activity_period: { type: 'string' },
-          activity_date: { type: 'string' },
+          activity_date: { type: ['string', 'null'] },
           hours: { type: 'number' },
-          academic_year: { type: 'string' },
+          academic_year: { type: ['string', 'null'] },
           academic_term: { type: 'string' },
           is_adjustment: { type: 'boolean' },
           sync_student_info: { type: 'boolean' },
@@ -342,8 +342,10 @@ module.exports = async function (fastify, opts) {
     }
 
     if (Object.prototype.hasOwnProperty.call(patch, 'academic_year')) {
-      if (!academic.validYear(patch.academic_year)) return reply.code(400).send({ message: '学年格式无效' });
-      setField('academic_year', patch.academic_year);
+      const value = String(patch.academic_year || '').trim();
+      if (!value && !before.activity_date) setField('academic_year', null);
+      else if (!academic.validYear(value)) return reply.code(400).send({ message: '学年格式无效' });
+      else setField('academic_year', value);
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'academic_term')) {
       if (!Object.prototype.hasOwnProperty.call(academic.TERM_LABELS, patch.academic_term)) return reply.code(400).send({ message: '活动归属阶段无效' });
@@ -369,10 +371,10 @@ module.exports = async function (fastify, opts) {
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'activity_date')) {
       const value = String(patch.activity_date || '').trim();
-      if (!academic.validDate(value)) {
+      if (!value && !before.activity_date) setField('activity_date', null);
+      else if (!academic.validDate(value)) {
         return reply.code(400).send({ message: '活动日期必须是 YYYY-MM-DD' });
-      }
-      setField('activity_date', value);
+      } else setField('activity_date', value);
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'hours')) {
       const value = Math.round(Number(patch.hours) * 10) / 10;

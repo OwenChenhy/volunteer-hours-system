@@ -2,6 +2,10 @@ const db = require('../db');
 
 const TERM_LABELS = { upper: '上半年', lower: '下半年', vacation: '寒暑假补录', unassigned: '待确认累计' };
 const UNKNOWN = /(源表|未拆分|累计记录|累计未拆分)/;
+const LEGACY_LABEL = '2026年10月之前导入的活动';
+const LEGACY_PERIOD = 'legacy';
+
+function validSummaryPeriod(value) { return value === LEGACY_PERIOD || validYear(value); }
 
 function rules() {
   const start = Number(process.env.ACADEMIC_YEAR_START_MONTH || 9);
@@ -44,7 +48,7 @@ function classify(row) {
     else if (config.vacation_months.includes(month)) term = 'vacation';
     else term = config.upper_months.includes(month) ? 'upper' : 'lower';
   }
-  return { academic_year: validYear(academicYear) ? academicYear : null, academic_term: term, term_label: TERM_LABELS[term] || TERM_LABELS.unassigned };
+  return { academic_year: validSummaryPeriod(academicYear) ? academicYear : LEGACY_PERIOD, academic_term: term, term_label: TERM_LABELS[term] || TERM_LABELS.unassigned };
 }
 
 function expressions(alias = 'l') {
@@ -52,8 +56,9 @@ function expressions(alias = 'l') {
   const year = `(EXTRACT(YEAR FROM ${alias}.activity_date)::int - CASE WHEN EXTRACT(MONTH FROM ${alias}.activity_date) < ${config.start_month} THEN 1 ELSE 0 END)`;
   const periodYear = `substring(${alias}.activity_period from '(20[0-9]{2}-20[0-9]{2})')`;
   return {
-    year: `COALESCE(${alias}.academic_year, ${periodYear}, ${year}::text || '-' || (${year} + 1)::text)`,
+    year: `COALESCE(${alias}.academic_year, ${periodYear}, ${year}::text || '-' || (${year} + 1)::text, '${LEGACY_PERIOD}')`,
     term: `COALESCE(${alias}.academic_term, CASE
+      WHEN ${alias}.activity_date IS NULL THEN 'unassigned'
       WHEN COALESCE(${alias}.activity_period, '') ~ '(寒假|暑假|寒暑假|暑期|寒期)' THEN 'vacation'
       WHEN COALESCE(${alias}.activity_period, '') ~ '(上半年|上学期|秋季学期)' THEN 'upper'
       WHEN COALESCE(${alias}.activity_period, '') ~ '(下半年|下学期|春季学期)' THEN 'lower'
@@ -78,7 +83,7 @@ function summarize(records) {
 }
 
 async function getSummary(options = {}) {
-  if (!validYear(options.academic_year)) throw new Error('学年必须为连续的 YYYY-YYYY');
+  if (!validSummaryPeriod(options.academic_year)) throw new Error('请选择历史导入或填写连续两年的学年');
   const expr = expressions();
   const params = [options.academic_year];
   let where = `${expr.year} = $1`;
@@ -112,4 +117,4 @@ async function getSummary(options = {}) {
   return { academic_year: options.academic_year, page, limit, total_students: totalStudents, rows: result.rows.map((row) => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, key.endsWith('_hours') || key === 'rank' || key === 'total_students' ? Number(value) : value]))) };
 }
 
-module.exports = { TERM_LABELS, rules, validYear, validDate, classify, summarize, expressions, getSummary };
+module.exports = { TERM_LABELS, LEGACY_LABEL, LEGACY_PERIOD, rules, validYear, validSummaryPeriod, validDate, classify, summarize, expressions, getSummary };

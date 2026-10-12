@@ -11,7 +11,7 @@ module.exports = async function (fastify, opts) {
 
   fastify.get('/academic-summary', { schema: { querystring: { type: 'object', required: ['academic_year'], properties: { academic_year: { type: 'string', maxLength: 9 }, college: { type: 'string', maxLength: 128 }, grade: { type: 'string', maxLength: 16 }, page: { type: 'integer', minimum: 1, maximum: 100000 }, limit: { type: 'integer', minimum: 1, maximum: 100 } } } } }, async (request, reply) => {
     const input = { ...request.query };
-    if (!academic.validYear(input.academic_year)) return reply.code(400).send({ message: '请填写连续两年的学年，例如 2025-2026' });
+    if (!academic.validSummaryPeriod(input.academic_year)) return reply.code(400).send({ message: '请选择历史导入或填写连续两年的学年，例如 2025-2026' });
     if (input.college) input.college = normalizeCollegeName(input.college);
     if (request.user.role === 'college_admin') {
       if (!request.user.org_name) return reply.code(403).send({ message: '账号未配置所属学院' });
@@ -54,7 +54,7 @@ module.exports = async function (fastify, opts) {
     const workbook = new ExcelJS.Workbook();
     addJsonSheet(workbook, '概览', [overview]);
     addJsonSheet(workbook, '按学院统计', byCollege);
-    addJsonSheet(workbook, '按月统计', byMonth);
+    addJsonSheet(workbook, '月份与历史导入', byMonth);
 
     const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
     reply

@@ -3,6 +3,7 @@ const academic = require('../services/academicService');
 const { authenticate } = require('../middlewares/auth');
 const { isOrganizer, hasFullAccess } = require('../middlewares/rbac');
 const { writeAudit } = require('../services/auditService');
+const { normalizeCollegeName } = require('../utils/collegeNames');
 
 module.exports = async function (fastify, opts) {
   fastify.addHook('preHandler', authenticate);
@@ -19,7 +20,7 @@ module.exports = async function (fastify, opts) {
     }
 
     const { rows } = await db.query(query, params);
-    return rows.map((row) => ({ ...row, ...academic.classify(row), academic_year_inferred: !row.academic_year, academic_term_inferred: !row.academic_term }));
+    return rows.map((row) => ({ ...row, ...academic.classify(row), activity_time_label: row.start_time ? row.activity_date : academic.LEGACY_LABEL, academic_year_inferred: !row.academic_year, academic_term_inferred: !row.academic_term }));
   });
 
   fastify.post('/', {
@@ -51,7 +52,7 @@ module.exports = async function (fastify, opts) {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `;
-    const { rows } = await db.query(query, [name, start_time, end_time, location, org_name, description, userId, academic_year || null, academic_term || null]);
+    const { rows } = await db.query(query, [name, start_time, end_time, location, normalizeCollegeName(org_name) || null, description, userId, academic_year || null, academic_term || null]);
     await writeAudit(request, 'activity.create', 'activity', rows[0].id, { name });
     return reply.code(201).send(rows[0]);
   });
@@ -79,8 +80,8 @@ module.exports = async function (fastify, opts) {
         required: ['name', 'start_time', 'end_time'],
         properties: {
           name: { type: 'string' },
-          start_time: { type: 'string', format: 'date-time' },
-          end_time: { type: 'string', format: 'date-time' },
+          start_time: { type: ['string', 'null'], format: 'date-time' },
+          end_time: { type: ['string', 'null'], format: 'date-time' },
           location: { type: 'string' },
           org_name: { type: 'string' },
           description: { type: 'string' },
@@ -95,7 +96,7 @@ module.exports = async function (fastify, opts) {
     if (academic_year && !academic.validYear(academic_year)) return reply.code(400).send({ message: '学年格式无效' });
     if (new Date(end_time) < new Date(start_time)) return reply.code(400).send({ message: '结束时间不能早于开始时间' });
 
-    const checkRes = await db.query('SELECT created_by FROM activities WHERE id = $1', [id]);
+    const checkRes = await db.query('SELECT created_by, start_time, end_time FROM activities WHERE id = $1', [id]);
     if (checkRes.rows.length === 0) {
       return reply.code(404).send({ message: '活动不存在' });
     }
@@ -104,12 +105,18 @@ module.exports = async function (fastify, opts) {
       return reply.code(403).send({ message: '权限不足' });
     }
 
+    if ((!start_time || !end_time) && !(start_time === null && end_time === null && checkRes.rows[0].start_time === null && checkRes.rows[0].end_time === null)) {
+      return reply.code(400).send({ message: '新增或已填写日期的活动必须保留有效开始和结束时间' });
+    }
+
     const client = await db.pool.connect();
     let rows;
     try {
       await client.query('BEGIN');
-      ({ rows } = await client.query(`UPDATE activities SET name = $1, start_time = $2, end_time = $3, location = $4, org_name = $5, description = $6, academic_year = $8, academic_term = $9 WHERE id = $7 RETURNING *`, [name, start_time, end_time, location, org_name, description, id, academic_year || null, academic_term || null]));
-      await client.query(`UPDATE volunteer_logs SET activity_name = $1, activity_date = ($2::timestamptz AT TIME ZONE 'Asia/Shanghai')::date, academic_year = $3, academic_term = $4 WHERE activity_id = $5`, [name, start_time, academic_year || null, academic_term || null, id]);
+      ({ rows } = await client.query(`UPDATE activities SET name = $1, start_time = $2, end_time = $3, location = $4, org_name = $5, description = $6, academic_year = $8, academic_term = $9 WHERE id = $7 RETURNING *`, [name, start_time, end_time, location, normalizeCollegeName(org_name) || null, description, id, academic_year || null, academic_term || null]));
+      await client.query(`UPDATE volunteer_logs SET activity_name = $1, activity_date = ($2::timestamptz AT TIME ZONE 'Asia/Shanghai')::date, academic_year = $3, academic_term = $4,
+        activity_period=CASE WHEN $2::timestamptz IS NOT NULL AND activity_period=$6 THEN NULL ELSE activity_period END
+        WHERE activity_id = $5`, [name, start_time, academic_year || null, academic_term || null, id, academic.LEGACY_LABEL]);
       await client.query('COMMIT');
     } catch (err) { await client.query('ROLLBACK'); throw err; }
     finally { client.release(); }
