@@ -33,7 +33,7 @@ module.exports = async function (fastify) {
       });
       const selected = candidates.slice((page - 1) * 20, page * 20);
       const matches = await Promise.all(selected.map(rows => queryStudentLogs(rows[0].student_id, rows[0].student_name, null, state)));
-      return { total_matches: candidates.length, truncated: candidates.length > page * 20, page, page_size: 20, matches };
+      return { query_read_only: true, total_matches: candidates.length, truncated: candidates.length > page * 20, page, page_size: 20, matches };
     }
 
     const params = [];
@@ -63,6 +63,7 @@ module.exports = async function (fastify) {
     const matches = await Promise.all(selected.map((row) => queryDraftStudentLogs(row.student_id, row.student_name, college)));
 
     return {
+      query_read_only: false,
       total_matches: candidates.length,
       truncated: candidates.length > page * 20,
       page,

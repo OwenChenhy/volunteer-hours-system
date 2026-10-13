@@ -15,7 +15,8 @@
     "test:ux": "node scripts/ux-regression.js",
     "test:publication": "node scripts/publication-regression.js",
     "test:startup": "node scripts/startup-regression.js",
-    "test:review": "node scripts/review-regression.js"
+    "test:review": "node scripts/review-regression.js",
+    "test:private-review": "node scripts/private-review-regression.js"
   },
   "keywords": [],
   "author": "",

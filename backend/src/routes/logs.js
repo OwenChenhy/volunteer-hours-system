@@ -189,6 +189,8 @@ module.exports = async function (app) {
     let updated;
     try {
       await client.query('BEGIN');
+      // Serialize restore checks and updates with imports before taking activity or record locks.
+      if (restore) await client.query('SELECT pg_advisory_xact_lock(927641)');
       const before = await lockedLog(client, id);
       if (!before) throw failure(404, '记录不存在');
       const canReview = hasCapability(request.user.role, 'logs:review');

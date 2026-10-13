@@ -1,0 +1,248 @@
+{
+  "reviewed_commit": "1646a229a8ae11fed3212623fd69ebb004de5475",
+  "date": "2026-10-14",
+  "pull_request": 1,
+  "environment": "isolated server databases and loopback browser; synthetic fixtures; existing dependencies",
+  "production_changed": false,
+  "merged_or_deployed": false,
+  "database_before": [
+    {
+      "name": "verification results are marked read-only while ID results expose the latest draft",
+      "passed": false
+    },
+    {
+      "name": "missing date and inferred legacy year are reclassified after a default date",
+      "passed": false
+    },
+    {
+      "name": "invalid February date does not retain its preview year after October replacement",
+      "passed": false
+    },
+    {
+      "name": "a valid date without an explicit year still determines the academic year",
+      "passed": true
+    },
+    {
+      "name": "an explicitly supplied academic year is preserved",
+      "passed": true
+    },
+    {
+      "name": "the administrator default academic year keeps its existing priority",
+      "passed": true
+    },
+    {
+      "name": "an explicit year in the activity period is preserved",
+      "passed": true
+    },
+    {
+      "name": "an invalid explicitly supplied year remains a validation error",
+      "passed": true
+    },
+    {
+      "name": "a cumulative row keeps its unassigned term after date completion",
+      "passed": false
+    },
+    {
+      "name": "two reviewers cannot restore two histories with the same import identity",
+      "passed": false
+    },
+    {
+      "name": "restoration and import confirmation share the same duplicate protection",
+      "passed": false
+    }
+  ],
+  "database_after": [
+    {
+      "name": "verification results are marked read-only while ID results expose the latest draft",
+      "passed": true
+    },
+    {
+      "name": "missing date and inferred legacy year are reclassified after a default date",
+      "passed": true
+    },
+    {
+      "name": "invalid February date does not retain its preview year after October replacement",
+      "passed": true
+    },
+    {
+      "name": "a valid date without an explicit year still determines the academic year",
+      "passed": true
+    },
+    {
+      "name": "an explicitly supplied academic year is preserved",
+      "passed": true
+    },
+    {
+      "name": "the administrator default academic year keeps its existing priority",
+      "passed": true
+    },
+    {
+      "name": "an explicit year in the activity period is preserved",
+      "passed": true
+    },
+    {
+      "name": "an invalid explicitly supplied year remains a validation error",
+      "passed": true
+    },
+    {
+      "name": "a cumulative row keeps its unassigned term after date completion",
+      "passed": true
+    },
+    {
+      "name": "two reviewers cannot restore two histories with the same import identity",
+      "passed": true
+    },
+    {
+      "name": "restoration and import confirmation share the same duplicate protection",
+      "passed": true
+    }
+  ],
+  "browser_before": [
+    {
+      "name": "published snapshot cannot overwrite a 4.5-hour draft through a grade-only edit",
+      "passed": false,
+      "published_hours": 2.5,
+      "draft_hours_after_attempt": 2.5,
+      "edit_button_visible": true
+    },
+    {
+      "name": "ID lookup keeps draft editing and preserves corrected hours",
+      "passed": false,
+      "draft_hours": 2.5
+    },
+    {
+      "name": "changing the query mode clears an open editor",
+      "passed": false
+    },
+    {
+      "name": "a delayed old response cannot restore a result after switching query modes",
+      "passed": false
+    },
+    {
+      "name": "student lookup has no browser JavaScript errors",
+      "passed": true
+    }
+  ],
+  "browser_after": [
+    {
+      "name": "published snapshot cannot overwrite a 4.5-hour draft through a grade-only edit",
+      "passed": true,
+      "published_hours": 2.5,
+      "draft_hours_after_attempt": 4.5,
+      "edit_button_visible": false
+    },
+    {
+      "name": "ID lookup keeps draft editing and preserves corrected hours",
+      "passed": true,
+      "draft_hours": 4.5
+    },
+    {
+      "name": "changing the query mode clears an open editor",
+      "passed": true
+    },
+    {
+      "name": "a delayed old response cannot restore a result after switching query modes",
+      "passed": true
+    },
+    {
+      "name": "student lookup has no browser JavaScript errors",
+      "passed": true
+    }
+  ],
+  "prior_review_regression": {
+    "startup-regression.js": [
+      {
+        "name": "empty database initializes before publication startup",
+        "passed": true
+      },
+      {
+        "name": "Compose 001-only database receives every subsequent migration",
+        "passed": true
+      },
+      {
+        "name": "existing database survives repeated startup without losing data",
+        "passed": true
+      },
+      {
+        "name": "concurrent initialization serializes the full migration chain",
+        "passed": true
+      }
+    ],
+    "startup-regression.js:exit": 0,
+    "review-regression.js": [
+      {
+        "name": "public verification code keeps its published total while ID and name use the draft",
+        "passed": true
+      },
+      {
+        "name": "concurrent withdrawal or voiding prevents an edit and creates no review note",
+        "passed": true
+      },
+      {
+        "name": "date validation uses the freshly locked row and releases rejected transactions",
+        "passed": true
+      },
+      {
+        "name": "review history records the latest committed value before editing",
+        "passed": true
+      },
+      {
+        "name": "preview warns about pending and rejected duplicates",
+        "passed": true
+      },
+      {
+        "name": "prepare excludes every effective duplicate from the confirmation totals",
+        "passed": true
+      },
+      {
+        "name": "confirm deduplicates pending and rejected records while permitting inactive history",
+        "passed": true
+      },
+      {
+        "name": "confirm rechecks a pending submission committed after initial normalization",
+        "passed": true
+      }
+    ],
+    "review-regression.js:exit": 0
+  },
+  "original_ux_regression": {
+    "ux_integration": "passed",
+    "groups": 12,
+    "checks": [
+      "six real accounts resolve capabilities from database",
+      "hidden actions remain forbidden and refresh token is not an access token",
+      "disable and role changes invalidate old sessions immediately",
+      "ordinary profile edits preserve the active session",
+      "empty activity deletion and ownership; concurrent submission is idempotent",
+      "rejected corrections; void changes draft totals only until next publication; audited restore",
+      "adjustment restore distinguishes normal hours; unknown-date source histories stay distinct",
+      "same-file dataset update applies changed defaults without being mistaken for a replay",
+      "dataset replacement retains history; receipt owns user and revision; retries do not duplicate",
+      "account soft deletion preserves attribution and safe restore",
+      "concurrent manager deletion leaves a usable manager",
+      "offline optional cache settles within a bounded timeout"
+    ]
+  },
+  "legacy_integrations": {
+    "academic_test": 0,
+    "publication_test": 0
+  },
+  "packaged_application": {
+    "npm_test_exit": 0,
+    "compose_001_startup": {
+      "health": 200,
+      "protected_users": 401
+    },
+    "repeat_startup": {
+      "health": 200,
+      "protected_users": 401
+    },
+    "packaged_schema": {
+      "public_counters": 2,
+      "publication_state": 1,
+      "user_roles": 6
+    }
+  },
+  "admin_build": "passed",
+  "restore_lock_scope": "restore/restore and restore/import-confirm; acquired before activity/log locks"
+}
