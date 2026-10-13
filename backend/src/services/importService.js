@@ -195,8 +195,13 @@ const confirmImport = async (rows, userId, note, filename = 'imported_file.xlsx'
 await client.query('BEGIN');
     // ponytail: one transaction lock serializes school imports; use per-dataset locks if concurrent import volume grows.
     await client.query('SELECT pg_advisory_xact_lock(927641)');
-    if (options.file_hash && options.replace_existing_note !== true) {
-      const existingFile = await client.query('SELECT id, record_count FROM import_batches WHERE file_hash = $1', [options.file_hash]);
+    if (options.expected_revision !== undefined) {
+      await client.query('LOCK TABLE volunteer_logs IN SHARE ROW EXCLUSIVE MODE');
+      const revision = (await client.query('SELECT revision FROM data_versions WHERE id=true')).rows[0].revision;
+      if (String(revision) !== String(options.expected_revision)) throw importValidationError('审核库已有变更，请重新核对导入摘要');
+    }
+    if (options.file_hash && options.replace_existing_note !== true && options.replace_dataset !== true) {
+      const existingFile = await client.query('SELECT id, record_count FROM import_batches WHERE file_hash = $1 AND superseded_at IS NULL', [options.file_hash]);
       if (existingFile.rows.length) {
         await client.query('ROLLBACK');
         return { success: true, count: 0, batch_id: existingFile.rows[0].id, skipped_duplicate_count: rows.length, already_imported: true, confirmed_problem_count: 0, replaced_batch_count: 0, replaced_record_count: 0 };
@@ -205,24 +210,36 @@ await client.query('BEGIN');
 
     let replacedBatchCount = 0;
     let replacedRecordCount = 0;
-    if (options.replace_existing_note === true) {
+    if (options.dataset_key) {
+      const prior = await client.query('SELECT id FROM import_batches WHERE dataset_key=$1 AND superseded_at IS NULL ORDER BY created_at DESC', [options.dataset_key]);
+      const ids = prior.rows.map(row => row.id);
+      if (ids.length && options.replace_dataset !== true) throw importValidationError('时长库已存在，请选择更新已有库并重新核对摘要');
+      replacedBatchCount = ids.length;
+      if (ids.length) {
+        const retired = await client.query(`UPDATE volunteer_logs SET lifecycle_previous_status=status::text,status='voided',
+          lifecycle_reason='累计时长库更新替换',lifecycle_at=now(),lifecycle_by=$2
+          WHERE import_batch_id=ANY($1::uuid[]) AND status IN ('pending','approved','rejected') RETURNING id`, [ids,userId]);
+        replacedRecordCount = retired.rowCount;
+        await client.query('UPDATE import_batches SET superseded_at=now() WHERE id=ANY($1::uuid[])', [ids]);
+      }
+    } else if (options.replace_existing_note === true) {
       const normalizedNote = normalizeCell(note);
       if (!normalizedNote) {
         throw importValidationError('安全重导必须填写批次备注，并且只能替换备注完全一致的历史批次');
       }
       const existingRes = await client.query(
-        'SELECT id FROM import_batches WHERE note = $1 ORDER BY created_at DESC',
+        'SELECT id FROM import_batches WHERE note = $1 AND superseded_at IS NULL ORDER BY created_at DESC',
         [normalizedNote]
       );
       const existingIds = existingRes.rows.map((row) => row.id);
       replacedBatchCount = existingIds.length;
       if (existingIds.length > 0) {
         const deleteLogs = await client.query(
-          'DELETE FROM volunteer_logs WHERE import_batch_id = ANY($1::uuid[])',
-          [existingIds]
+          `UPDATE volunteer_logs SET lifecycle_previous_status=status::text,status='voided',lifecycle_reason='累计时长库更新替换',lifecycle_at=now(),lifecycle_by=$2 WHERE import_batch_id=ANY($1::uuid[]) AND status IN ('pending','approved','rejected')`,
+          [existingIds,userId]
         );
         replacedRecordCount = deleteLogs.rowCount || 0;
-        await client.query('DELETE FROM import_batches WHERE id = ANY($1::uuid[])', [existingIds]);
+        await client.query('UPDATE import_batches SET superseded_at=now() WHERE id=ANY($1::uuid[])', [existingIds]);
       }
     }
 
@@ -250,6 +267,7 @@ const uniqueRows = [];
       options.file_hash || null
     ]);
     const batchId = batchRes.rows[0].id;
+    if (options.dataset_key) await client.query('UPDATE import_batches SET dataset_key=$2 WHERE id=$1', [batchId,options.dataset_key]);
 
     // 2. 批量插入记录
     // 注意：导入的数据状态为 'approved' 且来源为 'imported'
@@ -534,7 +552,7 @@ async function prepareImportRow(row, options) {
   }
   if (record.is_adjustment && !record.adjustment_reason) throw importValidationError(`第 ${rowNumber} 行调整说明不能为空`);
   if (record.academic_year && !academic.validYear(record.academic_year)) throw importValidationError(`第 ${rowNumber} 行学年无效`);
-  if (row.is_cumulative && (!options.replace_existing_note || !normalizeCell(options.note))) throw importValidationError('累计表必须使用固定批次备注替换旧表，请选择安全重导');
+  if (row.is_cumulative && !options.dataset_key && (!options.replace_existing_note || !normalizeCell(options.note))) throw importValidationError('累计表必须使用固定批次备注替换旧表，请选择安全重导');
   if (Math.abs(record.hours) > 9999.9) {
     throw importValidationError(`第 ${rowNumber} 行服务时长超过系统上限 9999.9`);
   }
@@ -656,5 +674,7 @@ async function checkDuplicateRecord(studentId, activityName, activityDate, adjus
 
 module.exports = {
   parsePreview,
+  prepareImportRow,
+  makeDuplicateKey,
   confirmImport
 };

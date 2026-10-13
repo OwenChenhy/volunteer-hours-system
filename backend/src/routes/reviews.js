@@ -140,6 +140,15 @@ async function resolveActivityId(client, log, userId) {
 
 module.exports = async function (fastify, opts) {
   fastify.addHook('preHandler', authenticate);
+  fastify.addHook('preHandler', async (request, reply) => {
+    if (request.user.role !== 'college_admin') return;
+    if (!request.user.org_name) return reply.code(403).send({message:'账号未配置所属学院'});
+    const id = request.params?.id || request.params?.log_id;
+    if (!id) return;
+    const row = (await db.query('SELECT college FROM volunteer_logs WHERE id=$1',[id])).rows[0];
+    if (!row || row.college !== normalizeCollegeName(request.user.org_name)) return reply.code(403).send({message:'只能查看或处理所属学院记录'});
+  });
+
 
   fastify.get('/problem-logs', { preHandler: [requireCapability('reviews:read')] }, async (request, reply) => {
     const {
@@ -152,7 +161,7 @@ module.exports = async function (fastify, opts) {
     } = request.query;
 
     const params = [];
-    let where = "l.source = 'imported'";
+    let where = "l.source = 'imported' AND l.status IN ('pending','approved','rejected')";
 
     if (type === 'unprocessed') {
       params.push(OPEN_PROBLEM_STATUSES);
@@ -323,6 +332,7 @@ module.exports = async function (fastify, opts) {
       return reply.code(404).send({ message: '记录不存在' });
     }
     const before = beforeRes.rows[0];
+    if (['withdrawn','voided'].includes(before.status)) return reply.code(409).send({ message: '记录已撤回或作废，请先恢复再编辑' });
     if (request.user.role === 'college_admin' && !request.user.org_name) return reply.code(403).send({ message: '账号未配置所属学院' });
     if (request.user.role === 'college_admin' && request.user.org_name && !hasFullAccess(request.user)) {
       const scopedCollege = normalizeCollegeName(request.user.org_name);
@@ -418,6 +428,7 @@ module.exports = async function (fastify, opts) {
     const client = await db.pool.connect();
     try {
 await client.query('BEGIN');
+      if (before.activity_id) await client.query('SELECT id FROM activities WHERE id=$1 FOR UPDATE',[before.activity_id]);
       await client.query('SELECT id FROM volunteer_logs WHERE id = $1 FOR UPDATE', [id]);
       if (changed.student_id && changed.student_id !== before.student_id) {
         const collision = await client.query('SELECT 1 FROM volunteer_logs WHERE student_id = $1 AND student_name <> $2 LIMIT 1', [changed.student_id, changed.student_name || before.student_name]);

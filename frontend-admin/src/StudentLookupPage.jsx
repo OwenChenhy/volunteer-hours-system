@@ -1,3 +1,4 @@
+import { useSession } from './SessionContext';
 import { useState } from 'react';
 import { searchStudent, updateProblemLog } from './api';
 
@@ -16,9 +17,8 @@ export default function StudentLookupPage() {
   const [editing, setEditing] = useState(null);
   const [scopeYear, setScopeYear] = useState('');
   const [scopeTerm, setScopeTerm] = useState('');
-  let role = '';
-  try { role = JSON.parse(atob((localStorage.getItem('adminToken') || '').split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).role; } catch {}
-  const canEdit = ['admin', 'super_admin', 'data_admin', 'college_admin'].includes(role);
+  const { can } = useSession();
+  const canEdit = can('reviews:manage');
 
   async function load(page = 1) {
     setError(''); setLoading(true);

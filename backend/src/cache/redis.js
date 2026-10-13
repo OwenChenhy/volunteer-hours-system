@@ -8,7 +8,7 @@ function getRedisClient() {
   }
 
   if (!clientPromise) {
-    const client = createClient({ url: process.env.REDIS_URL });
+    const client = createClient({ url: process.env.REDIS_URL, socket: { connectTimeout: 1000, reconnectStrategy: false } });
     client.on('error', (err) => {
       console.warn('Redis cache disabled after connection error:', err.message);
     });

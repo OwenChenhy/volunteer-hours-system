@@ -8,6 +8,9 @@ const { normalizeCollegeName } = require('../utils/collegeNames');
 module.exports = async function (fastify, opts) {
   fastify.addHook('preHandler', authenticate);
   fastify.addHook('preHandler', requireCapability('stats:read'));
+  fastify.addHook('preHandler', async (request, reply) => {
+    if (request.user.role === 'college_admin' && request.url.split('?')[0] !== '/api/v1/stats/academic-summary') return reply.code(403).send({ message: '学院账号请使用所属学院学年汇总' });
+  });
 
   fastify.get('/academic-summary', { schema: { querystring: { type: 'object', required: ['academic_year'], properties: { academic_year: { type: 'string', maxLength: 9 }, college: { type: 'string', maxLength: 128 }, grade: { type: 'string', maxLength: 16 }, page: { type: 'integer', minimum: 1, maximum: 100000 }, limit: { type: 'integer', minimum: 1, maximum: 100 } } } } }, async (request, reply) => {
     const input = { ...request.query };

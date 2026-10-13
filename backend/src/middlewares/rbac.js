@@ -15,6 +15,7 @@ const ROLE_CAPABILITIES = {
     'import:manage',
     'stats:read',
     'reviews:manage',
+    'reviews:read',
     'ops:read',
     'audit:read',
   ],

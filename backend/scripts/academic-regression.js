@@ -76,8 +76,17 @@ async function main() {
   const jwt = require('jsonwebtoken');
   const { buildApp } = require('../src/app');
   const app = buildApp(); await app.ready();
-  const token = (role, org_name = college) => jwt.sign({ id: adminId, username: 'academic-test-admin', role, org_name }, process.env.JWT_SECRET);
-  const inject = (method, url, payload, role = 'admin', org_name = college) => app.inject({ method, url, payload, headers: { authorization: `Bearer ${token(role, org_name)}` } });
+  const fixtures=new Map();
+  const inject = async (method,url,payload,role='admin',org_name=college) => {
+    const key=JSON.stringify([role,org_name]);
+    if(!fixtures.has(key)) {
+      const id=crypto.randomUUID();
+      await db.query('INSERT INTO users(id,username,password_hash,real_name,role,org_name) VALUES($1,$2,$3,$4,$5,$6)',[id,'academic-role-'+id,'not-a-login-credential','测试角色',role,org_name]);
+      fixtures.set(key,id);
+    }
+    const token=jwt.sign({id:fixtures.get(key),session_version:0,token_type:'access'},process.env.JWT_SECRET);
+    return app.inject({method,url,payload,headers:{authorization:'Bearer '+token}});
+  };
   try {
     const lookup = await inject('POST', '/api/v1/admin-search', { mode: 'student_name', value: '同名样例' });
     assert.strictEqual(lookup.statusCode, 200); assert.strictEqual(lookup.json().total_matches, 2);

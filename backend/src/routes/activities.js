@@ -1,164 +1,118 @@
 const db = require('../db');
 const academic = require('../services/academicService');
+const publication = require('../services/publicationService');
 const { authenticate } = require('../middlewares/auth');
-const { isOrganizer, hasFullAccess } = require('../middlewares/rbac');
+const { requireCapability, hasFullAccess } = require('../middlewares/rbac');
+const { UUID } = require('../services/sessionService');
 const { writeAudit } = require('../services/auditService');
 const { normalizeCollegeName } = require('../utils/collegeNames');
+const failure = (code,message) => Object.assign(new Error(message), { statusCode: code });
 
-module.exports = async function (fastify, opts) {
-  fastify.addHook('preHandler', authenticate);
+async function find(client, request, lock = false) {
+  if (!UUID.test(request.params.id || '')) throw failure(400,'活动编号无效');
+  const activity = (await client.query(`SELECT a.*, (a.start_time AT TIME ZONE 'Asia/Shanghai')::date AS activity_date
+    FROM activities a WHERE a.id=$1 ${lock ? 'FOR UPDATE' : ''}`, [request.params.id])).rows[0];
+  if (!activity) throw failure(404,'活动不存在');
+  if (!hasFullAccess(request.user) && activity.created_by !== request.user.id) throw failure(403,'只能管理自己负责的活动');
+  return activity;
+}
 
-  fastify.get('/', async (request, reply) => {
-    let query;
-    let params = [];
+function data(body, user, before) {
+  const name = String(body.name || '').trim();
+  const { start_time, end_time } = body;
+  if (!name || name.length > 256) throw failure(400,'请填写不超过256字的活动名称');
+  const validTime=value=>typeof value==='string'&&academic.validDate(value.slice(0,10))&&/T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(value)&&Number.isFinite(Date.parse(value));
+  const historical = before && before.start_time === null && before.end_time === null && start_time === null && end_time === null;
+  if (!historical && (!start_time || !end_time || !validTime(start_time) || !validTime(end_time) || Date.parse(end_time) < Date.parse(start_time))) throw failure(400,'请填写真实的起止时间，结束时间不能早于开始时间');
+  if (body.academic_year && !academic.validYear(body.academic_year)) throw failure(400,'学年须为连续两年，如2026-2027');
+  if (body.academic_term && !Object.hasOwn(academic.TERM_LABELS,body.academic_term)) throw failure(400,'归属阶段无效');
+  const org = user.role === 'college_admin' ? user.org_name : body.org_name;
+  if (user.role === 'college_admin' && !org) throw failure(403,'账号未配置所属学院');
+  return [name,start_time,end_time,String(body.location||'').trim().slice(0,128),normalizeCollegeName(org)||null,
+    String(body.description||'').trim().slice(0,4000),body.academic_year||null,body.academic_term||null];
+}
 
-    if (hasFullAccess(request.user)) {
-      query = "SELECT *, (start_time AT TIME ZONE 'Asia/Shanghai')::date AS activity_date FROM activities ORDER BY created_at DESC";
-    } else {
-      query = "SELECT *, (start_time AT TIME ZONE 'Asia/Shanghai')::date AS activity_date FROM activities WHERE created_by = $1 ORDER BY created_at DESC";
-      params = [request.user.id];
-    }
+function classified(row) {
+  return { ...row, ...academic.classify(row), activity_time_label: row.start_time ? row.activity_date : academic.LEGACY_LABEL,
+    academic_year_inferred: !row.academic_year, academic_term_inferred: !row.academic_term };
+}
 
-    const { rows } = await db.query(query, params);
-    return rows.map((row) => ({ ...row, ...academic.classify(row), activity_time_label: row.start_time ? row.activity_date : academic.LEGACY_LABEL, academic_year_inferred: !row.academic_year, academic_term_inferred: !row.academic_term }));
+module.exports = async function(app) {
+  app.addHook('preHandler',authenticate);
+  app.addHook('preHandler',requireCapability('activities:write'));
+  app.get('/',async request => {
+    const params = [], filter = [request.query.include_deleted === 'true' ? 'true' : 'a.deleted_at IS NULL'];
+    if (!hasFullAccess(request.user)) { params.push(request.user.id); filter.push('a.created_by=$1'); }
+    const rows = (await db.query(`SELECT a.*, (a.start_time AT TIME ZONE 'Asia/Shanghai')::date AS activity_date,
+      COALESCE(c.record_count,0)::int AS record_count,COALESCE(c.pending_count,0)::int AS pending_count,
+      COALESCE(c.approved_count,0)::int AS approved_count,COALESCE(c.rejected_count,0)::int AS rejected_count
+      FROM activities a LEFT JOIN (SELECT activity_id,count(*) FILTER(WHERE status IN ('pending','approved','rejected')) AS record_count,
+        count(*) FILTER(WHERE status='pending') AS pending_count,count(*) FILTER(WHERE status='approved') AS approved_count,
+        count(*) FILTER(WHERE status='rejected') AS rejected_count FROM volunteer_logs GROUP BY activity_id) c ON c.activity_id=a.id
+      WHERE ${filter.join(' AND ')} ORDER BY a.created_at DESC`,params)).rows;
+    return rows.map(classified);
   });
 
-  fastify.post('/', {
-    preHandler: [isOrganizer],
-    schema: {
-      body: {
-        type: 'object',
-        required: ['name', 'start_time', 'end_time'],
-        properties: {
-          name: { type: 'string' },
-          start_time: { type: 'string', format: 'date-time' },
-          end_time: { type: 'string', format: 'date-time' },
-          location: { type: 'string' },
-          org_name: { type: 'string' },
-          description: { type: 'string' },
-          academic_year: { type: 'string' },
-          academic_term: { type: 'string', enum: ['', 'upper', 'lower', 'vacation', 'unassigned'] }
-        }
+  app.get('/:id',async(request,reply) => {
+    try {
+      const activity = await find(db,request);
+      const logs = (await db.query('SELECT * FROM volunteer_logs WHERE activity_id=$1',[activity.id])).rows;
+      const state = await publication.current();
+      const counts = { total: logs.length, pending:0,approved:0,rejected:0,withdrawn:0,voided:0,published:0,waiting_publication:0 };
+      for(const log of logs) {
+        counts[log.status] = (counts[log.status]||0)+1;
+        if(log.status==='approved') counts[publication.isPublished(state,log) ? 'published' : 'waiting_publication']++;
       }
-    }
-  }, async (request, reply) => {
-    const { name, start_time, end_time, location, org_name, description, academic_year, academic_term } = request.body;
-    if (academic_year && !academic.validYear(academic_year)) return reply.code(400).send({ message: '学年格式无效' });
-    if (new Date(end_time) < new Date(start_time)) return reply.code(400).send({ message: '结束时间不能早于开始时间' });
-    const userId = request.user.id;
-
-    const query = `
-      INSERT INTO activities (name, start_time, end_time, location, org_name, description, created_by, academic_year, academic_term)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING *
-    `;
-    const { rows } = await db.query(query, [name, start_time, end_time, location, normalizeCollegeName(org_name) || null, description, userId, academic_year || null, academic_term || null]);
-    await writeAudit(request, 'activity.create', 'activity', rows[0].id, { name });
-    return reply.code(201).send(rows[0]);
+      return { ...classified(activity), counts };
+    } catch(error) { if(error.statusCode) return reply.code(error.statusCode).send({ message:error.message }); throw error; }
   });
 
-  fastify.get('/:id', async (request, reply) => {
-    const { id } = request.params;
-    const { rows } = await db.query('SELECT * FROM activities WHERE id = $1', [id]);
-
-    if (rows.length === 0) {
-      return reply.code(404).send({ message: '活动不存在' });
-    }
-
-    const activity = rows[0];
-    if (!hasFullAccess(request.user) && activity.created_by !== request.user.id) {
-      return reply.code(403).send({ message: '权限不足' });
-    }
-
-    return activity;
+  app.post('/',async(request,reply) => {
+    try {
+      const values = data(request.body||{},request.user);
+      const activity = (await db.query(`INSERT INTO activities(name,start_time,end_time,location,org_name,description,academic_year,academic_term,created_by)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,[...values,request.user.id])).rows[0];
+      await writeAudit(request,'activity.create','activity',activity.id,{ name:activity.name });
+      return reply.code(201).send(activity);
+    } catch(error) { if(error.statusCode) return reply.code(error.statusCode).send({ message:error.message }); throw error; }
   });
 
-  fastify.put('/:id', {
-    schema: {
-      body: {
-        type: 'object',
-        required: ['name', 'start_time', 'end_time'],
-        properties: {
-          name: { type: 'string' },
-          start_time: { type: ['string', 'null'], format: 'date-time' },
-          end_time: { type: ['string', 'null'], format: 'date-time' },
-          location: { type: 'string' },
-          org_name: { type: 'string' },
-          description: { type: 'string' },
-          academic_year: { type: 'string' },
-          academic_term: { type: 'string', enum: ['', 'upper', 'lower', 'vacation', 'unassigned'] }
-        }
-      }
-    }
-  }, async (request, reply) => {
-    const { id } = request.params;
-    const { name, start_time, end_time, location, org_name, description, academic_year, academic_term } = request.body;
-    if (academic_year && !academic.validYear(academic_year)) return reply.code(400).send({ message: '学年格式无效' });
-    if (new Date(end_time) < new Date(start_time)) return reply.code(400).send({ message: '结束时间不能早于开始时间' });
-
-    const checkRes = await db.query('SELECT created_by, start_time, end_time FROM activities WHERE id = $1', [id]);
-    if (checkRes.rows.length === 0) {
-      return reply.code(404).send({ message: '活动不存在' });
-    }
-
-    if (!hasFullAccess(request.user) && checkRes.rows[0].created_by !== request.user.id) {
-      return reply.code(403).send({ message: '权限不足' });
-    }
-
-    if ((!start_time || !end_time) && !(start_time === null && end_time === null && checkRes.rows[0].start_time === null && checkRes.rows[0].end_time === null)) {
-      return reply.code(400).send({ message: '新增或已填写日期的活动必须保留有效开始和结束时间' });
-    }
-
+  async function mutate(request,reply,action) {
     const client = await db.pool.connect();
-    let rows;
+    let activity;
     try {
       await client.query('BEGIN');
-      ({ rows } = await client.query(`UPDATE activities SET name = $1, start_time = $2, end_time = $3, location = $4, org_name = $5, description = $6, academic_year = $8, academic_term = $9 WHERE id = $7 RETURNING *`, [name, start_time, end_time, location, normalizeCollegeName(org_name) || null, description, id, academic_year || null, academic_term || null]));
-      await client.query(`UPDATE volunteer_logs SET activity_name = $1, activity_date = ($2::timestamptz AT TIME ZONE 'Asia/Shanghai')::date, academic_year = $3, academic_term = $4,
-        activity_period=CASE WHEN $2::timestamptz IS NOT NULL AND activity_period=$6 THEN NULL ELSE activity_period END
-        WHERE activity_id = $5`, [name, start_time, academic_year || null, academic_term || null, id, academic.LEGACY_LABEL]);
+      const before = await find(client,request,true);
+      if(before.deleted_at && action!=='restore') throw failure(409,'活动已删除，请先恢复');
+      if(action==='update') {
+        const values = data(request.body||{},request.user,before);
+        activity = (await client.query(`UPDATE activities SET name=$2,start_time=$3,end_time=$4,location=$5,org_name=$6,
+          description=$7,academic_year=$8,academic_term=$9 WHERE id=$1 RETURNING *`,[before.id,...values])).rows[0];
+        await client.query(`UPDATE volunteer_logs SET activity_name=$2,activity_date=($3::timestamptz AT TIME ZONE 'Asia/Shanghai')::date,
+          academic_year=$4,academic_term=$5,activity_period=CASE WHEN $3::timestamptz IS NOT NULL AND activity_period=$6 THEN NULL ELSE activity_period END WHERE activity_id=$1`,
+          [before.id,values[0],values[1],values[6],values[7],academic.LEGACY_LABEL]);
+      } else if(action==='delete') {
+        const count = (await client.query("SELECT count(*)::int AS count FROM volunteer_logs WHERE activity_id=$1 AND status IN ('pending','approved','rejected')",[before.id])).rows[0].count;
+        if(count) throw failure(409,`活动仍有${count}条有效名单记录，请先撤回或作废记录，或选择归档`);
+        activity = (await client.query('UPDATE activities SET deleted_at=now() WHERE id=$1 RETURNING *',[before.id])).rows[0];
+      } else if(action==='restore') {
+        if(!before.deleted_at) throw failure(409,'活动未删除');
+        activity = (await client.query('UPDATE activities SET deleted_at=NULL WHERE id=$1 RETURNING *',[before.id])).rows[0];
+      } else {
+        activity = (await client.query('UPDATE activities SET status=$2 WHERE id=$1 RETURNING *',[before.id,action==='archive'?'archived':'active'])).rows[0];
+      }
       await client.query('COMMIT');
-    } catch (err) { await client.query('ROLLBACK'); throw err; }
-    finally { client.release(); }
-
-    await writeAudit(request, 'activity.update', 'activity', id, { name });
-    return rows[0];
-  });
-
-  fastify.patch('/:id/archive', async (request, reply) => {
-    const { id } = request.params;
-
-    const checkRes = await db.query('SELECT created_by FROM activities WHERE id = $1', [id]);
-    if (checkRes.rows.length === 0) {
-      return reply.code(404).send({ message: '活动不存在' });
-    }
-
-    if (!hasFullAccess(request.user) && checkRes.rows[0].created_by !== request.user.id) {
-      return reply.code(403).send({ message: '权限不足' });
-    }
-
-    const { rows } = await db.query(
-      "UPDATE activities SET status = 'archived' WHERE id = $1 RETURNING *",
-      [id]
-    );
-    await writeAudit(request, 'activity.archive', 'activity', id);
-    return rows[0];
-  });
-
-  fastify.patch('/:id/unarchive', async (request, reply) => {
-    const { id } = request.params;
-    const checkRes = await db.query('SELECT created_by FROM activities WHERE id = $1', [id]);
-    if (checkRes.rows.length === 0) {
-      return reply.code(404).send({ message: '活动不存在' });
-    }
-    if (!hasFullAccess(request.user) && checkRes.rows[0].created_by !== request.user.id) {
-      return reply.code(403).send({ message: '权限不足' });
-    }
-    const { rows } = await db.query(
-      "UPDATE activities SET status = 'active' WHERE id = $1 RETURNING *",
-      [id]
-    );
-    await writeAudit(request, 'activity.unarchive', 'activity', id);
-    return rows[0];
-  });
+    } catch(error) {
+      await client.query('ROLLBACK');
+      if(error.statusCode) return reply.code(error.statusCode).send({ message:error.message });
+      throw error;
+    } finally { client.release(); }
+    await writeAudit(request,`activity.${action}`,'activity',activity.id,{ name:activity.name });
+    return activity;
+  }
+  app.put('/:id',(request,reply)=>mutate(request,reply,'update'));
+  app.delete('/:id',(request,reply)=>mutate(request,reply,'delete'));
+  app.post('/:id/restore',(request,reply)=>mutate(request,reply,'restore'));
+  app.patch('/:id/archive',(request,reply)=>mutate(request,reply,'archive'));
+  app.patch('/:id/unarchive',(request,reply)=>mutate(request,reply,'unarchive'));
 };

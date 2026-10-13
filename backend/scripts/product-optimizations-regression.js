@@ -7,7 +7,11 @@ const ExcelJS = require('exceljs');
 const db = require('../src/db');
 const { hasCapability, hasFullAccess } = require('../src/middlewares/rbac');
 
-db.query = async (sql) => {
+db.query = async (sql, params) => {
+  if (/FROM users WHERE id=\$1/.test(sql) && params?.[0] === '00000000-0000-0000-0000-000000000000') {
+    return {rows:[{id:params[0],username:'regression-admin',real_name:'回归测试管理员',role:'admin',org_name:null,is_active:true,deleted_at:null,session_version:0}]};
+  }
+
   if (/SELECT 1 AS ok/i.test(sql)) return { rows: [{ ok: 1 }] };
   if (/COUNT\(\*\)::int FROM volunteer_logs/i.test(sql)) {
     return { rows: [{ volunteer_logs: 0, import_batches: 0, users: 1 }] };

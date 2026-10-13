@@ -13,8 +13,17 @@ const jwt = require('jsonwebtoken');
 const admin = '00000000-0000-0000-0000-000000000011';
 const college = '计算机科学与工程学院';
 const app = buildApp();
-const token = role => jwt.sign({ id: admin, username: 'publication-fixture', role, org_name: college }, process.env.JWT_SECRET);
-const inject = (method, url, payload, role) => app.inject({ method, url, payload, headers: role ? { authorization: `Bearer ${token(role)}` } : {} });
+const fixtures=new Map();
+const inject = async (method,url,payload,role) => {
+  if(!role) return app.inject({method,url,payload});
+  if(!fixtures.has(role)) {
+    const id=crypto.randomUUID();
+    await db.query('INSERT INTO users(id,username,password_hash,real_name,role,org_name) VALUES($1,$2,$3,$4,$5,$6)',[id,'publication-role-'+id,'not-a-login-credential','测试角色',role,college]);
+    fixtures.set(role,id);
+  }
+  const token=jwt.sign({id:fixtures.get(role),session_version:0,token_type:'access'},process.env.JWT_SECRET);
+  return app.inject({method,url,payload,headers:{authorization:'Bearer '+token}});
+};
 
 async function main() {
   await db.query("INSERT INTO users(id,username,password_hash,real_name,role,org_name) VALUES($1,'publication-fixture','not-a-login-credential','测试管理员','admin',$2)", [admin,college]);

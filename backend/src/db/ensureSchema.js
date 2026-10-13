@@ -6,6 +6,7 @@ async function ensureSchema() {
   await db.query(fs.readFileSync(path.join(__dirname, 'migrations/005_academic_hours.sql'), 'utf8'));
   await db.query(fs.readFileSync(path.join(__dirname, 'migrations/006_publications.sql'), 'utf8'));
   await db.query(fs.readFileSync(path.join(__dirname, 'migrations/007_unknown_activity_dates.sql'), 'utf8'));
+  await db.query(fs.readFileSync(path.join(__dirname, 'migrations/008_user_experience.sql'), 'utf8'));
   await db.query(`
     CREATE TABLE IF NOT EXISTS operation_logs (
       id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -90,8 +90,8 @@ export function exportStats() {
   return downloadFile("/stats/export", "volunteer-stats.xlsx");
 }
 
-export function listActivities() {
-  return request("/activities");
+export function listActivities(params = {}) {
+  return request(`/activities${toQuery(params)}`);
 }
 
 export function createActivity(payload) {
@@ -173,8 +173,8 @@ export function downloadImportTemplate() {
   return downloadFile("/import/template", "volunteer-import-template.xlsx");
 }
 
-export function listUsers() {
-  return request("/users");
+export function listUsers(params = {}) {
+  return request(`/users${toQuery(params)}`);
 }
 
 export function listRoles() {
@@ -291,3 +291,18 @@ async function downloadFile(path, filename) {
 export function getAcademicSummary(params) { return request(`/stats/academic-summary${toQuery(params)}`); }
 export const getPublicationStatus = () => request('/publications');
 export const publishHours = (body) => request('/publications', { method: 'POST', body: JSON.stringify(body) });
+
+export const logout = () => request('/auth/logout', {method:'POST'});
+export const getActivity = id => request(`/activities/${id}`);
+export const deleteActivity = id => request(`/activities/${id}`, {method:'DELETE'});
+export const restoreActivity = id => request(`/activities/${id}/restore`, {method:'POST'});
+export const deleteUser = id => request(`/users/${id}`, {method:'DELETE'});
+export const restoreUser = id => request(`/users/${id}/restore`, {method:'POST'});
+export const updateUser = (id,body) => request(`/users/${id}`, {method:'PATCH',body:JSON.stringify(body)});
+export const retireLog = (id,reason) => request(`/logs/${id}`, {method:'DELETE',body:JSON.stringify({reason})});
+export const restoreLog = (id,reason) => request(`/logs/${id}/restore`, {method:'POST',body:JSON.stringify({reason})});
+export const resubmitLog = (id,body) => request(`/logs/${id}/resubmit`, {method:'PATCH',body:JSON.stringify(body)});
+export const prepareImport = body => request('/import/prepare', {method:'POST',body:JSON.stringify(body)});
+export const previewParticipants = body => request('/logs/preview', {method:'POST',body:JSON.stringify(body)});
+export function previewParticipantFile(id,file) {const body=new FormData();body.append('file',file);return request(`/logs/preview-file?activity_id=${encodeURIComponent(id)}`,{method:'POST',body});}
+export const downloadParticipantTemplate = () => downloadFile('/logs/template','activity-participants.xlsx');

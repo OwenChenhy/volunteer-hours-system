@@ -127,7 +127,7 @@ function summary(state, options) {
 
 async function progress(state, studentId, studentName) {
   const records = (await db.query(`SELECT ${COLUMNS} FROM volunteer_logs WHERE student_id=$1 AND student_name=$2 ORDER BY created_at DESC, id`, [studentId, studentName])).rows;
-  return records.filter(row => state.originals.get(row.id) !== fingerprint(row)).map(row => ({ activity_name: row.activity_name, activity_date: row.activity_date, college: row.college, grade: row.grade, hours: Number(row.hours), status: row.status, status_label: row.status === 'approved' ? '审核通过，待统一发布' : row.status === 'rejected' ? '审核未通过' : '审核中', reject_reason: row.status === 'rejected' ? row.reject_reason : null }));
+  return records.filter(row => state.originals.get(row.id) !== fingerprint(row)).map(row => ({ activity_name: row.activity_name, activity_date: row.activity_date, college: row.college, grade: row.grade, hours: Number(row.hours), status: row.status, status_label: row.status === 'approved' ? '审核通过，待统一发布' : row.status === 'rejected' ? '审核未通过' : row.status === 'withdrawn' ? '已撤回' : row.status === 'voided' ? (state.originals.has(row.id) ? '已作废，待统一发布更正' : '已作废') : '审核中', reject_reason: row.status === 'rejected' ? row.reject_reason : null }));
 }
 
 async function status() {
@@ -138,4 +138,4 @@ async function status() {
   return { published: meta(state), counts: Object.fromEntries(counts.rows.map(row => [row.status, row.count])), has_changes: String(revision) !== String(state.batch.source_revision), history };
 }
 
-module.exports = { current, publish, meta, summary, progress, status, identityKey: key };
+module.exports = { current, publish, meta, summary, progress, status, identityKey: key, isPublished: (state,row) => state.originals.get(row.id) === fingerprint(row) };
