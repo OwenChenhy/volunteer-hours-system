@@ -127,43 +127,102 @@ const problemTypeLabels = {
 
 
 function App() {
-  const [token,setToken]=useState(()=>localStorage.getItem('adminToken'));
-  const [user,setUser]=useState(null),[sessionError,setSessionError]=useState(''),[mobileNavOpen,setMobileNavOpen]=useState(false);
-  const [activeModule,setActiveModule]=useState(()=>new URLSearchParams(window.location.search).get('page')||'overview');
-  const can=capability=>!!user&&(!capability||user.capabilities?.includes('*')||user.capabilities?.includes(capability));
-  const available=modules.filter(item=>can(item.capability)&&(!item.allScope||user?.scope?.type==='all'));
+  const [token, setToken] = useState(() => localStorage.getItem('adminToken'));
+  const [user, setUser] = useState(null),
+    [sessionError, setSessionError] = useState(''),
+    [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [activeModule, setActiveModule] = useState(() => new URLSearchParams(window.location.search).get('page') || 'overview');
+  const can = capability => !!user && (!capability || user.capabilities?.includes('*') || user.capabilities?.includes(capability));
+  const available = modules.filter(item => can(item.capability) && (!item.allScope || user?.scope?.type === 'all'));
   async function refresh() {
-    if(!token)return;
-    try { const data=await getMe();if(localStorage.getItem('adminToken')===token){setUser(data.user);setSessionError('');} }
-    catch(error){if(localStorage.getItem('adminToken')===token)setSessionError(error.message);}
+    if (!token) return;
+    try {
+      const data = await getMe();
+      if (localStorage.getItem('adminToken') === token) {
+        setUser(data.user);
+        setSessionError('');
+      }
+    } catch (error) {
+      if (localStorage.getItem('adminToken') === token) setSessionError(error.message);
+    }
   }
-  useEffect(()=>{
-    const expired=()=>{setToken(null);setUser(null);setSessionError('');};
-    window.addEventListener('admin-session-expired',expired);
-    return ()=>window.removeEventListener('admin-session-expired',expired);
-  },[]);
-  useEffect(()=>{setUser(null);if(!token)return;refresh();const timer=setInterval(refresh,60000);const focus=()=>refresh();window.addEventListener('focus',focus);return()=>{clearInterval(timer);window.removeEventListener('focus',focus);};},[token]);
-  useEffect(()=>{if(user&&!available.some(item=>item.id===activeModule)){setActiveModule('overview');const url=new URL(window.location.href);url.searchParams.set('page','overview');window.history.replaceState(null,'',url);}},[user,activeModule]);
-  function go(page){if(!available.some(item=>item.id===page))return;if(!window.dispatchEvent(new CustomEvent('admin-before-navigate',{cancelable:true})))return;setActiveModule(page);setMobileNavOpen(false);const url=new URL(window.location.href);url.searchParams.set('page',page);window.history.replaceState(null,'',url);}
-  async function signOut(){if(!window.dispatchEvent(new CustomEvent('admin-before-navigate',{cancelable:true})))return;try{await logout();}catch{}localStorage.removeItem('adminToken');setToken(null);setUser(null);setActiveModule('overview');}
-  if(!token)return <LoginPage onLogin={setToken}/>;
-  if(!user)return <main className="login-page"><section className="login-panel"><h2>正在加载工作台</h2><p role={sessionError?'alert':'status'}>{sessionError||'正在核对账号权限…'}</p>{sessionError&&<button onClick={refresh}>重新加载</button>}<button onClick={signOut}>退出登录</button></section></main>;
-  const current=available.find(item=>item.id===activeModule)||available[0];
-  return <SessionContext.Provider value={{user,can,refresh}}><div className="admin-shell"><aside className={mobileNavOpen?"sidebar menu-open":"sidebar"}><div className="brand"><ClipboardList size={28}/><div><strong>志愿时长</strong><span>管理工作台</span></div><button className="mobile-menu-toggle" aria-expanded={mobileNavOpen} aria-controls="admin-navigation" onClick={()=>setMobileNavOpen(!mobileNavOpen)}><Menu size={18}/>{mobileNavOpen?"收起菜单":"功能菜单"}</button></div><nav id="admin-navigation" className="nav-list" aria-label="管理后台导航">{available.map(item=>{const Icon=item.icon;return <button key={item.id} className={current.id===item.id?'nav-item active':'nav-item'} type="button" onClick={()=>go(item.id)}><Icon size={18}/><span>{item.label}</span></button>;})}</nav><button className="logout-button" onClick={signOut}><LogOut size={18}/>退出登录</button></aside><main className="content"><header className="topbar"><div><p>志愿时长管理系统</p><h1>{current.label}</h1></div><div className="status-pill"><span>{user.real_name||user.username} · {roleLabel(user.role)}</span></div></header>
-    {current.id==='overview'&&<OverviewPage go={go}/>}
-    {current.id==='activities'&&<ActivityWorkspace/>}
-    {current.id==='submit'&&<ActivityWorkspace startWithSubmission/>}
-    {current.id==='progress'&&<RecordsPage/>}
-    {current.id==='lookup'&&<StudentLookupPage/>}
-    {current.id==='academic'&&<AcademicSummaryPage/>}
-    {current.id==='review'&&<RecordsPage review/>}
-    {current.id==='publication'&&<PublicationPage/>}
-    {current.id==='problems'&&(can('reviews:manage')?<ProblemReviewPage go={go}/>:<ProblemReadOnlyPage/>)}
-    {current.id==='import'&&<ImportWizard/>}
-    {current.id==='stats'&&<StatsPage go={go}/>}
-    {current.id==='ops'&&<OpsStatusPage/>}
-    {current.id==='users'&&<UserManagementPage/>}
-    {current.id==='audit'&&<AuditPage/>}
+  useEffect(() => {
+    const expired = () => {
+      setToken(null);
+      setUser(null);
+      setSessionError('');
+    };
+    window.addEventListener('admin-session-expired', expired);
+    return () => window.removeEventListener('admin-session-expired', expired);
+  }, []);
+  useEffect(() => {
+    setUser(null);
+    if (!token) return;
+    refresh();
+    const timer = setInterval(refresh, 60000);
+    const focus = () => refresh();
+    window.addEventListener('focus', focus);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', focus);
+    };
+  }, [token]);
+  useEffect(() => {
+    if (user && !available.some(item => item.id === activeModule)) {
+      setActiveModule('overview');
+      const url = new URL(window.location.href);
+      url.searchParams.set('page', 'overview');
+      window.history.replaceState(null, '', url);
+    }
+  }, [user, activeModule]);
+  function go(page) {
+    if (!available.some(item => item.id === page)) return;
+    if (!window.dispatchEvent(new CustomEvent('admin-before-navigate', {
+      cancelable: true
+    }))) return;
+    setActiveModule(page);
+    setMobileNavOpen(false);
+    const url = new URL(window.location.href);
+    url.searchParams.set('page', page);
+    window.history.replaceState(null, '', url);
+  }
+  async function signOut() {
+    if (!window.dispatchEvent(new CustomEvent('admin-before-navigate', {
+      cancelable: true
+    }))) return;
+    try {
+      await logout();
+    } catch {}
+    localStorage.removeItem('adminToken');
+    setToken(null);
+    setUser(null);
+    setActiveModule('overview');
+  }
+  if (!token) return <LoginPage onLogin={setToken} />;
+  if (!user) return <main className="login-page"><section className="login-panel"><h2>正在加载工作台</h2><p role={sessionError ? 'alert' : 'status'}>{sessionError || '正在核对账号权限…'}</p>{sessionError && <button onClick={refresh}>重新加载</button>}<button onClick={signOut}>退出登录</button></section></main>;
+  const current = available.find(item => item.id === activeModule) || available[0];
+  return <SessionContext.Provider value={{
+    user,
+    can,
+    refresh
+  }}><div className="admin-shell"><aside className={mobileNavOpen ? "sidebar menu-open" : "sidebar"}><div className="brand"><ClipboardList size={28} /><div><strong>志愿时长</strong><span>管理工作台</span></div><button className="mobile-menu-toggle" aria-expanded={mobileNavOpen} aria-controls="admin-navigation" onClick={() => setMobileNavOpen(!mobileNavOpen)}><Menu size={18} />{mobileNavOpen ? "收起菜单" : "功能菜单"}</button></div><nav id="admin-navigation" className="nav-list" aria-label="管理后台导航">{available.map(item => {
+            const Icon = item.icon;
+            return <button key={item.id} className={current.id === item.id ? 'nav-item active' : 'nav-item'} type="button" onClick={() => go(item.id)}><Icon size={18} /><span>{item.label}</span></button>;
+          })}</nav><button className="logout-button" onClick={signOut}><LogOut size={18} />退出登录</button></aside><main className="content"><header className="topbar"><div><p>志愿时长管理系统</p><h1>{current.label}</h1></div><div className="status-pill"><span>{user.real_name || user.username} · {roleLabel(user.role)}</span></div></header>
+    {current.id === 'overview' && <OverviewPage go={go} />}
+    {current.id === 'activities' && <ActivityWorkspace />}
+    {current.id === 'submit' && <ActivityWorkspace startWithSubmission />}
+    {current.id === 'progress' && <RecordsPage />}
+    {current.id === 'lookup' && <StudentLookupPage />}
+    {current.id === 'academic' && <AcademicSummaryPage />}
+    {current.id === 'review' && <RecordsPage review />}
+    {current.id === 'publication' && <PublicationPage />}
+    {current.id === 'problems' && (can('reviews:manage') ? <ProblemReviewPage go={go} /> : <ProblemReadOnlyPage />)}
+    {current.id === 'import' && <ImportWizard />}
+    {current.id === 'stats' && <StatsPage go={go} />}
+    {current.id === 'ops' && <OpsStatusPage />}
+    {current.id === 'users' && <UserManagementPage />}
+    {current.id === 'audit' && <AuditPage />}
   </main></div></SessionContext.Provider>;
 }
 
@@ -232,24 +291,55 @@ function LoginPage({ onLogin }) {
 }
 
 
-function OverviewPage({go}) {
-  const {user,can}=useSession();
-  const [overview,setOverview]=useState({}),[error,setError]=useState(''),[loading,setLoading]=useState(true);
-  const fullStats=can('stats:read')&&user.scope?.type==='all';
-  async function load(){setLoading(true);setError('');try {
-    if(fullStats)setOverview(await getOverview());
-    else if(can('logs:submit')){const [activities,records]=await Promise.all([listActivities(),listLogs({limit:1000})]);setOverview({activity_count:activities.length,pending_count:records.filter(row=>row.status==='pending').length,approved_count:records.filter(row=>row.status==='approved').length,rejected_count:records.filter(row=>row.status==='rejected').length});}
-  }catch(error){setError(error.message);}finally{setLoading(false);}}
-  useEffect(()=>{load();},[user.id]);
-  const actions=[['activities','活动与名单','activities:write',Activity],['progress','查看提交进度','logs:submit',ClipboardList],['review','处理待审核名单','logs:review',CheckSquare],['import','导入或更新时长库','import:manage',UploadCloud],['academic','查询学年汇总','stats:read',BarChart3],['ops','查看运维状态','ops:read',ShieldCheck],['users','管理用户账号','*',Users]].filter(([, ,capability])=>can(capability));
-  const cards=fullStats?[['总学生数',overview.total_students||0],['审核库累计时长',formatHours(overview.total_hours)],['待审核',overview.pending_count||0],['活动数',overview.activity_count||0]]:can('logs:submit')?[['负责活动',overview.activity_count||0],['待审核',overview.pending_count||0],['已通过',overview.approved_count||0],['需修正',overview.rejected_count||0]]:[];
-  return <section className="dashboard-section"><SectionTitle title={`${user.real_name||user.username}的工作台`} subtitle={loading?'正在加载':`${roleLabel(user.role)}${user.org_name?' · '+user.org_name:''}`} onRefresh={load}/><Notice type="error" message={error}/>{cards.length>0&&<div className="metric-grid">{cards.map(([label,value])=><article className="metric-card" key={label}><span>{label}</span><strong>{value}</strong></article>)}</div>}<Panel title="开始工作"><div className="quick-grid">{actions.map(([page,label,,Icon])=><button className="quick-action" key={page} onClick={()=>go(page)}><Icon size={18}/><span>{label}</span></button>)}</div></Panel><Panel title="操作流程"><p>活动信息 → 参与名单 → 校验预览 → 提交审核 → 通过待发布 → 统一发布生效</p><p>从活动详情查看名单进度，驳回后修正重提；办公室时长库导入与活动名单上传分别使用对应入口。</p></Panel></section>;
+function OverviewPage({
+  go
+}) {
+  const {
+    user,
+    can
+  } = useSession();
+  const [overview, setOverview] = useState({}),
+    [error, setError] = useState(''),
+    [loading, setLoading] = useState(true);
+  const fullStats = can('stats:read') && user.scope?.type === 'all';
+  async function load() {
+    setLoading(true);
+    setError('');
+    try {
+      if (fullStats) setOverview(await getOverview());else if (can('logs:submit')) {
+        const [activities, records] = await Promise.all([listActivities(), listLogs({
+          limit: 1000
+        })]);
+        setOverview({
+          activity_count: activities.length,
+          pending_count: records.filter(row => row.status === 'pending').length,
+          approved_count: records.filter(row => row.status === 'approved').length,
+          rejected_count: records.filter(row => row.status === 'rejected').length
+        });
+      }
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+  useEffect(() => {
+    load();
+  }, [user.id]);
+  const actions = [['activities', '活动与名单', 'activities:write', Activity], ['progress', '查看提交进度', 'logs:submit', ClipboardList], ['review', '处理待审核名单', 'logs:review', CheckSquare], ['import', '导入或更新时长库', 'import:manage', UploadCloud], ['academic', '查询学年汇总', 'stats:read', BarChart3], ['ops', '查看运维状态', 'ops:read', ShieldCheck], ['users', '管理用户账号', '*', Users]].filter(([,, capability]) => can(capability));
+  const cards = fullStats ? [['总学生数', overview.total_students || 0], ['审核库累计时长', formatHours(overview.total_hours)], ['待审核', overview.pending_count || 0], ['活动数', overview.activity_count || 0]] : can('logs:submit') ? [['负责活动', overview.activity_count || 0], ['待审核', overview.pending_count || 0], ['已通过', overview.approved_count || 0], ['需修正', overview.rejected_count || 0]] : [];
+  return <section className="dashboard-section"><SectionTitle title={`${user.real_name || user.username}的工作台`} subtitle={loading ? '正在加载' : `${roleLabel(user.role)}${user.org_name ? ' · ' + user.org_name : ''}`} onRefresh={load} /><Notice type="error" message={error} />{cards.length > 0 && <div className="metric-grid">{cards.map(([label, value]) => <article className="metric-card" key={label}><span>{label}</span><strong>{value}</strong></article>)}</div>}<Panel title="开始工作"><div className="quick-grid">{actions.map(([page, label,, Icon]) => <button className="quick-action" key={page} onClick={() => go(page)}><Icon size={18} /><span>{label}</span></button>)}</div></Panel><Panel title="操作流程"><p>活动信息 → 参与名单 → 校验预览 → 提交审核 → 通过待发布 → 统一发布生效</p><p>从活动详情查看名单进度，驳回后修正重提；办公室时长库导入与活动名单上传分别使用对应入口。</p></Panel></section>;
 }
 
-function ProblemReadOnlyPage(){
-  const [rows,setRows]=useState([]),[error,setError]=useState('');
-  useEffect(()=>{listProblemLogs({limit:200}).then(setRows).catch(error=>setError(error.message));},[]);
-  return <section className="dashboard-section"><SectionTitle title="问题复核记录" subtitle="按当前账号范围查看复核信息"/><Notice type="error" message={error}/><Panel title={`记录 · ${rows.length}条`}><DataTable columns={['学生','学院','活动','时长','复核状态']} rows={rows.map(row=>[`${row.student_name} / ${row.student_id}`,row.college,row.activity_name,formatHours(row.hours),problemTypeLabel(getRowProblemType(row))])}/></Panel></section>;
+function ProblemReadOnlyPage() {
+  const [rows, setRows] = useState([]),
+    [error, setError] = useState('');
+  useEffect(() => {
+    listProblemLogs({
+      limit: 200
+    }).then(setRows).catch(error => setError(error.message));
+  }, []);
+  return <section className="dashboard-section"><SectionTitle title="问题复核记录" subtitle="按当前账号范围查看复核信息" /><Notice type="error" message={error} /><Panel title={`记录 · ${rows.length}条`}><DataTable columns={['学生', '学院', '活动', '时长', '复核状态']} rows={rows.map(row => [`${row.student_name} / ${row.student_id}`, row.college, row.activity_name, formatHours(row.hours), problemTypeLabel(getRowProblemType(row))])} /></Panel></section>;
 }
 
 function ProblemReviewPage({ go }) {
