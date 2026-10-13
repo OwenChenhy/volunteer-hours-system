@@ -1,0 +1,11 @@
+[Unit]
+Description=Volunteer database backup to local disk and Supabase Storage
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/volunteer-system
+Environment=COMPOSE_DIR=/opt/volunteer-system
+ExecStart=/bin/sh /opt/volunteer-system/scripts/backup-postgres.sh
+ExecStartPost=/usr/bin/python3 /opt/volunteer-system/scripts/sync-supabase-database.py

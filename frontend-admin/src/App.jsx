@@ -1172,6 +1172,76 @@ function ImportPage() {
   );
 }
 
+function StudentLookupPage() {
+  const [mode, setMode] = useState('student_id');
+  const [value, setValue] = useState('');
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(event) {
+    event.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      setResult(await searchStudent(mode, value.trim()));
+    } catch (err) {
+      setResult(null);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="dashboard-section">
+      <SectionTitle title="学生时长查询" subtitle="按学号、姓名或校验码查找已审核记录" />
+      <Notice type="error" message={error} />
+      <form className="lookup-form" onSubmit={submit}>
+        <select aria-label="查询方式" value={mode} onChange={(event) => { setMode(event.target.value); setResult(null); }}>
+          <option value="student_id">学号</option>
+          <option value="student_name">姓名</option>
+          <option value="verification_code">校验码</option>
+        </select>
+        <input
+          aria-label="查询内容"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          placeholder={mode === 'verification_code' ? '输入 12 位校验码' : `输入${mode === 'student_id' ? '学号' : '姓名'}`}
+          required
+        />
+        <button className="primary-button" type="submit" disabled={loading}><Search size={16} />{loading ? '查询中' : '查询'}</button>
+      </form>
+      {result && (
+        <div className="lookup-results">
+          <p className="lookup-count">匹配 {result.total_matches} 人{result.truncated ? '，仅展示前 20 人' : ''}</p>
+          {result.matches.length === 0 && <div className="empty-state">没有匹配的已审核记录</div>}
+          {result.matches.map((student) => (
+            <section className="lookup-result" key={`${student.student_id}-${student.student_name}`}>
+              <div className="lookup-result-head">
+                <div>
+                  <h3>{student.student_name} <small>{student.student_id}</small></h3>
+                  <p>{student.college || '学院未填写'} · {student.grade || '年级未填写'} · 校验码 {student.verification_code}</p>
+                </div>
+                <strong>{formatHours(student.total_hours)} 小时</strong>
+              </div>
+              <DataTable
+                columns={['活动名称', '时间说明', '时长', '来源']}
+                rows={(student.records || []).map((record) => [
+                  record.activity_name,
+                  record.activity_time_label || record.activity_period || record.activity_date || '-',
+                  `${formatHours(record.hours)} 小时`,
+                  record.source_label || record.source || '-',
+                ])}
+              />
+            </section>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function StatsPage({ go }) {
   const [overview, setOverview] = useState({});
   const [college, setCollege] = useState([]);

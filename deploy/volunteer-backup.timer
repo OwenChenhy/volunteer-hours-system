@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily volunteer database backup
+
+[Timer]
+OnCalendar=*-*-* 19:15:00 UTC
+Persistent=true
+AccuracySec=5m
+Unit=volunteer-backup.service
+
+[Install]
+WantedBy=timers.target
