@@ -87,7 +87,7 @@ module.exports = async function (fastify, opts) {
         WHERE b.dataset_key=$1 AND b.superseded_at IS NULL GROUP BY b.id ORDER BY b.created_at DESC`,[datasetKey])).rows;
       if(prior.length&&!options.replace_dataset) return reply.code(409).send({message:'时长库已有版本，请选择更新已有库'});
       const priorIds=new Set(prior.map(batch=>batch.id));
-      const active=(await db.query("SELECT student_id,activity_name,activity_date,is_adjustment,hours,adjustment_reason,import_batch_id FROM volunteer_logs WHERE status='approved'")).rows
+      const active=(await db.query("SELECT student_id,activity_name,activity_date,is_adjustment,hours,adjustment_reason,import_batch_id FROM volunteer_logs WHERE status IN ('pending','approved','rejected')")).rows
         .filter(row=>!priorIds.has(row.import_batch_id));
       const known=new Set(active.map(importService.makeDuplicateKey)), seen=new Set(), records=[];
       let duplicateCount=0;

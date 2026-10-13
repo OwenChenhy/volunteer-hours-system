@@ -327,112 +327,116 @@ module.exports = async function (fastify, opts) {
     const { id } = request.params;
     const patch = request.body || {};
 
-    const beforeRes = await db.query('SELECT * FROM volunteer_logs WHERE id = $1', [id]);
-    if (beforeRes.rows.length === 0) {
-      return reply.code(404).send({ message: '记录不存在' });
-    }
-    const before = beforeRes.rows[0];
-    if (['withdrawn','voided'].includes(before.status)) return reply.code(409).send({ message: '记录已撤回或作废，请先恢复再编辑' });
-    if (request.user.role === 'college_admin' && !request.user.org_name) return reply.code(403).send({ message: '账号未配置所属学院' });
-    if (request.user.role === 'college_admin' && request.user.org_name && !hasFullAccess(request.user)) {
-      const scopedCollege = normalizeCollegeName(request.user.org_name);
-      if (before.college !== scopedCollege) {
-        return reply.code(403).send({ message: '只能复核本学院数据' });
-      }
-    }
-
-    const updates = [];
-    const params = [];
-    const changed = {};
-
-    function setField(column, value) {
-      params.push(value);
-      updates.push(`${column} = $${params.length}`);
-      changed[column] = value;
-    }
-
-    if (Object.prototype.hasOwnProperty.call(patch, 'academic_year')) {
-      const value = String(patch.academic_year || '').trim();
-      if (!value && !before.activity_date) setField('academic_year', null);
-      else if (!academic.validYear(value)) return reply.code(400).send({ message: '学年格式无效' });
-      else setField('academic_year', value);
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'academic_term')) {
-      if (!Object.prototype.hasOwnProperty.call(academic.TERM_LABELS, patch.academic_term)) return reply.code(400).send({ message: '活动归属阶段无效' });
-      setField('academic_term', patch.academic_term);
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'student_id')) {
-      const value = String(patch.student_id || '').trim();
-      if (!value) return reply.code(400).send({ message: '学号不能为空' });
-      setField('student_id', value.slice(0, 32));
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'student_name')) {
-      const value = String(patch.student_name || '').trim();
-      if (!value) return reply.code(400).send({ message: '姓名不能为空' });
-      setField('student_name', value.slice(0, 64));
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'activity_name')) {
-      const value = String(patch.activity_name || '').trim();
-      if (!value) return reply.code(400).send({ message: '活动名称不能为空' });
-      setField('activity_name', value.slice(0, 256));
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'activity_period')) {
-      setField('activity_period', String(patch.activity_period || '').trim().slice(0, 64) || null);
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'activity_date')) {
-      const value = String(patch.activity_date || '').trim();
-      if (!value && !before.activity_date) setField('activity_date', null);
-      else if (!academic.validDate(value)) {
-        return reply.code(400).send({ message: '活动日期必须是 YYYY-MM-DD' });
-      } else setField('activity_date', value);
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'hours')) {
-      const value = Math.round(Number(patch.hours) * 10) / 10;
-      if (!Number.isFinite(value) || Math.abs(value) > 9999.9) {
-        return reply.code(400).send({ message: '服务时长必须在 -9999.9 到 9999.9 之间' });
-      }
-      if (value <= 0 && !String(patch.note || '').trim()) return reply.code(400).send({ message: '扣减或作废必须填写修改原因' });
-      if (value < 0) { setField('is_adjustment', true); setField('adjustment_reason', String(patch.note).trim().slice(0, 512)); }
-      setField('hours', value);
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'source_total_hours')) {
-      const value = Math.round(Number(patch.source_total_hours) * 10) / 10;
-      if (!Number.isFinite(value) || value <= 0 || value > 999999.9) {
-        return reply.code(400).send({ message: '源表总时长必须大于 0' });
-      }
-      setField('source_total_hours', value);
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'college')) {
-      const value = normalizeCollegeName(patch.college);
-      if (value && !isFormalCollegeName(value)) {
-        return reply.code(400).send({ message: '学院不在正式名称列表' });
-      }
-      if (request.user.role === 'college_admin' && value !== normalizeCollegeName(request.user.org_name)) return reply.code(403).send({ message: '不能把学生记录转移到其他学院' });
-      setField('college', value || null);
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'grade')) {
-      setField('grade', String(patch.grade || '').trim().slice(0, 16) || null);
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'phone')) {
-      setField('phone', String(patch.phone || '').trim().slice(0, 20) || null);
-    }
-    if (patch.mark_processed === true) {
-      setField('is_legacy_processed', true);
-      setField('import_detail_status', 'reviewed');
-    }
-
-    if (updates.length === 0 && !patch.note) {
-      return reply.code(400).send({ message: '没有可保存的复核内容' });
-    }
-
     const client = await db.pool.connect();
+    let transactionOpen = false;
     try {
-await client.query('BEGIN');
-      if (before.activity_id) await client.query('SELECT id FROM activities WHERE id=$1 FOR UPDATE',[before.activity_id]);
-      await client.query('SELECT id FROM volunteer_logs WHERE id = $1 FOR UPDATE', [id]);
+      await client.query('BEGIN');
+      transactionOpen = true;
+      const hint = (await client.query('SELECT activity_id FROM volunteer_logs WHERE id=$1', [id])).rows[0];
+      if (!hint) return reply.code(404).send({ message: '记录不存在' });
+      if (hint?.activity_id) await client.query('SELECT id FROM activities WHERE id=$1 FOR UPDATE', [hint.activity_id]);
+      const beforeRes = await client.query('SELECT * FROM volunteer_logs WHERE id=$1 FOR UPDATE', [id]);
+      if (beforeRes.rows.length === 0) {
+        return reply.code(404).send({ message: '记录不存在' });
+      }
+      const before = beforeRes.rows[0];
+      if (before.activity_id !== hint.activity_id) return reply.code(409).send({ message: '记录的关联活动已变化，请刷新后重试' });
+      if (['withdrawn','voided'].includes(before.status)) return reply.code(409).send({ message: '记录已撤回或作废，请先恢复再编辑' });
+      if (request.user.role === 'college_admin' && !request.user.org_name) return reply.code(403).send({ message: '账号未配置所属学院' });
+      if (request.user.role === 'college_admin' && request.user.org_name && !hasFullAccess(request.user)) {
+        const scopedCollege = normalizeCollegeName(request.user.org_name);
+        if (before.college !== scopedCollege) {
+          return reply.code(403).send({ message: '只能复核本学院数据' });
+        }
+      }
+
+      const updates = [];
+      const params = [];
+      const changed = {};
+
+      function setField(column, value) {
+        params.push(value);
+        updates.push(`${column} = $${params.length}`);
+        changed[column] = value;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(patch, 'academic_year')) {
+        const value = String(patch.academic_year || '').trim();
+        if (!value && !before.activity_date) setField('academic_year', null);
+        else if (!academic.validYear(value)) return reply.code(400).send({ message: '学年格式无效' });
+        else setField('academic_year', value);
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'academic_term')) {
+        if (!Object.prototype.hasOwnProperty.call(academic.TERM_LABELS, patch.academic_term)) return reply.code(400).send({ message: '活动归属阶段无效' });
+        setField('academic_term', patch.academic_term);
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'student_id')) {
+        const value = String(patch.student_id || '').trim();
+        if (!value) return reply.code(400).send({ message: '学号不能为空' });
+        setField('student_id', value.slice(0, 32));
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'student_name')) {
+        const value = String(patch.student_name || '').trim();
+        if (!value) return reply.code(400).send({ message: '姓名不能为空' });
+        setField('student_name', value.slice(0, 64));
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'activity_name')) {
+        const value = String(patch.activity_name || '').trim();
+        if (!value) return reply.code(400).send({ message: '活动名称不能为空' });
+        setField('activity_name', value.slice(0, 256));
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'activity_period')) {
+        setField('activity_period', String(patch.activity_period || '').trim().slice(0, 64) || null);
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'activity_date')) {
+        const value = String(patch.activity_date || '').trim();
+        if (!value && !before.activity_date) setField('activity_date', null);
+        else if (!academic.validDate(value)) {
+          return reply.code(400).send({ message: '活动日期必须是 YYYY-MM-DD' });
+        } else setField('activity_date', value);
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'hours')) {
+        const value = Math.round(Number(patch.hours) * 10) / 10;
+        if (!Number.isFinite(value) || Math.abs(value) > 9999.9) {
+          return reply.code(400).send({ message: '服务时长必须在 -9999.9 到 9999.9 之间' });
+        }
+        if (value <= 0 && !String(patch.note || '').trim()) return reply.code(400).send({ message: '扣减或作废必须填写修改原因' });
+        if (value < 0) { setField('is_adjustment', true); setField('adjustment_reason', String(patch.note).trim().slice(0, 512)); }
+        setField('hours', value);
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'source_total_hours')) {
+        const value = Math.round(Number(patch.source_total_hours) * 10) / 10;
+        if (!Number.isFinite(value) || value <= 0 || value > 999999.9) {
+          return reply.code(400).send({ message: '源表总时长必须大于 0' });
+        }
+        setField('source_total_hours', value);
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'college')) {
+        const value = normalizeCollegeName(patch.college);
+        if (value && !isFormalCollegeName(value)) {
+          return reply.code(400).send({ message: '学院不在正式名称列表' });
+        }
+        if (request.user.role === 'college_admin' && value !== normalizeCollegeName(request.user.org_name)) return reply.code(403).send({ message: '不能把学生记录转移到其他学院' });
+        setField('college', value || null);
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'grade')) {
+        setField('grade', String(patch.grade || '').trim().slice(0, 16) || null);
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'phone')) {
+        setField('phone', String(patch.phone || '').trim().slice(0, 20) || null);
+      }
+      if (patch.mark_processed === true) {
+        setField('is_legacy_processed', true);
+        setField('import_detail_status', 'reviewed');
+      }
+
+      if (updates.length === 0 && !patch.note) {
+        return reply.code(400).send({ message: '没有可保存的复核内容' });
+      }
+
       if (changed.student_id && changed.student_id !== before.student_id) {
         const collision = await client.query('SELECT 1 FROM volunteer_logs WHERE student_id = $1 AND student_name <> $2 LIMIT 1', [changed.student_id, changed.student_name || before.student_name]);
-        if (collision.rows.length) { await client.query('ROLLBACK'); return reply.code(409).send({ message: '新学号已关联其他姓名，请先核对人员身份' }); }
+        if (collision.rows.length) return reply.code(409).send({ message: '新学号已关联其他姓名，请先核对人员身份' });
       }
       let updated = before;
       if (updates.length > 0) {
@@ -446,7 +450,7 @@ await client.query('BEGIN');
         updated = updateRes.rows[0];
       }
 
-if (patch.sync_student_info === true) {
+      if (patch.sync_student_info === true) {
         const identityFields = ['student_id', 'student_name', 'college', 'grade', 'phone'].filter((key) => Object.prototype.hasOwnProperty.call(changed, key));
         if (identityFields.length) {
           const values = identityFields.map((key) => changed[key]);
@@ -502,17 +506,18 @@ if (patch.sync_student_info === true) {
       ]);
 
       await client.query('COMMIT');
+      transactionOpen = false;
       await writeAudit(request, 'reviews.update_log', 'volunteer_log', id, {
         changed,
         mark_processed: patch.mark_processed === true
       });
       return updated;
     } catch (err) {
-      await client.query('ROLLBACK');
       request.log.error({ err }, 'review update failed');
       return reply.code(500).send({ message: '复核保存失败' });
     } finally {
-      client.release();
+      try { if (transactionOpen) await client.query('ROLLBACK'); }
+      finally { client.release(); }
     }
   });
 };

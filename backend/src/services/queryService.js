@@ -5,11 +5,11 @@ const academic = require('./academicService');
 
 const LEGACY_PLACEHOLDER_PATTERN = /(源表|未拆分|拆分时长|拆分明细|已拆分|累计未拆分)/;
 
-async function queryStudentLogs(student_id, student_name, college = null) {
+async function queryStudentLogs(student_id, student_name, college = null, state = null) {
   // 严格比对学号和姓名，去除空格
   const sId = student_id.trim();
   const sName = student_name.trim();
-  const state = await publication.current();
+  state = state || await publication.current();
   const rows = (state.people.get(publication.identityKey(sId, sName)) || []).filter(row => !college || row.college === college);
   const progress = (await publication.progress(state, sId, sName)).filter(row => !college || row.college === college);
   if (!rows.length && !progress.length) return null;

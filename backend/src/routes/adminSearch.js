@@ -1,7 +1,8 @@
 const db = require('../db');
 const { authenticate } = require('../middlewares/auth');
 const { requireCapability } = require('../middlewares/rbac');
-const { getDraftDataVersion: getDataVersion, makeVerificationCode, queryDraftStudentLogs: queryStudentLogs } = require('../services/queryService');
+const { makeVerificationCode, queryDraftStudentLogs, queryStudentLogs } = require('../services/queryService');
+const publication = require('../services/publicationService');
 const { normalizeCollegeName } = require('../utils/collegeNames');
 
 module.exports = async function (fastify) {
@@ -24,6 +25,17 @@ module.exports = async function (fastify) {
       return reply.code(403).send({ message: '学院管理员请使用学号或姓名查询本学院记录' });
     }
 
+    if (mode === 'verification_code') {
+      const state = await publication.current();
+      const candidates = [...state.people.values()].filter(rows => {
+        const hours = rows.reduce((sum, row) => sum + Math.round(Number(row.hours) * 10), 0) / 10;
+        return makeVerificationCode(rows[0].student_id, rows[0].student_name, hours, rows.length, state.batch.id) === value.toUpperCase();
+      });
+      const selected = candidates.slice((page - 1) * 20, page * 20);
+      const matches = await Promise.all(selected.map(rows => queryStudentLogs(rows[0].student_id, rows[0].student_name, null, state)));
+      return { total_matches: candidates.length, truncated: candidates.length > page * 20, page, page_size: 20, matches };
+    }
+
     const params = [];
     let filter = '';
     let college = null;
@@ -33,11 +45,9 @@ module.exports = async function (fastify) {
       params.push(college);
       filter += ` AND college = $${params.length}`;
     }
-    if (mode !== 'verification_code') {
-      params.push(value);
-      filter += ` AND ${mode} = $${params.length}`;
-    }
-    if (otherValue && mode !== 'verification_code') {
+    params.push(value);
+    filter += ` AND ${mode} = $${params.length}`;
+    if (otherValue) {
       params.push(otherValue);
       filter += ` AND ${mode === 'student_id' ? 'student_name' : 'student_id'} = $${params.length}`;
     }
@@ -48,18 +58,9 @@ module.exports = async function (fastify) {
       GROUP BY student_id, student_name
       ORDER BY student_id, student_name
     `, params);
-    const version = await getDataVersion();
-    const candidates = mode === 'verification_code'
-      ? result.rows.filter((row) => makeVerificationCode(
-        row.student_id,
-        row.student_name,
-        Number(row.total_hours),
-        row.record_count,
-        version.batch_id
-      ) === value.toUpperCase())
-      : result.rows;
+    const candidates = result.rows;
     const selected = candidates.slice((page - 1) * 20, page * 20);
-    const matches = await Promise.all(selected.map((row) => queryStudentLogs(row.student_id, row.student_name, college)));
+    const matches = await Promise.all(selected.map((row) => queryDraftStudentLogs(row.student_id, row.student_name, college)));
 
     return {
       total_matches: candidates.length,

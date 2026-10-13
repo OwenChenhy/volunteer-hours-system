@@ -126,7 +126,7 @@ const parsePreview = async (buffer) => {
           previewRow.activity_date, previewRow.is_adjustment, previewRow.hours, previewRow.adjustment_reason
         );
         if (isDuplicate) {
-          addIssue(previewRow, 'duplicate_record', 'warning', '该学生已存在相同活动和日期的已通过记录');
+          addIssue(previewRow, 'duplicate_record', 'warning', '该学生已存在相同活动和日期的待审核、已通过或已驳回记录');
         }
       }
 
@@ -664,7 +664,7 @@ function isValidDate(dateInput) {
 async function checkDuplicateRecord(studentId, activityName, activityDate, adjustment = false, hours = 0, reason = '', executor = db) {
   const query = `
     SELECT 1 FROM volunteer_logs
-    WHERE student_id = $1 AND activity_name = $2 AND activity_date = $3 AND status = 'approved'
+    WHERE student_id = $1 AND activity_name = $2 AND activity_date = $3 AND status IN ('pending','approved','rejected')
       AND is_adjustment = $4 AND ($4 = false OR (hours = $5 AND adjustment_reason = $6))
     LIMIT 1
   `;
