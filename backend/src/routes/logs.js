@@ -206,8 +206,12 @@ module.exports = async function (app) {
         }
         let clash = [];
         if (before.source === 'online' && before.activity_id) {
-          clash = (await client.query("SELECT id FROM volunteer_logs WHERE id<>$1 AND status IN ('pending','approved','rejected') AND student_id=$2 AND activity_id=$3 AND is_adjustment=false LIMIT 1", [id, before.student_id, before.activity_id])).rows;
-        } else if (before.activity_date) {
+          clash = (await client.query(`SELECT id FROM volunteer_logs WHERE id<>$1 AND status IN ('pending','approved','rejected')
+            AND student_id=$2 AND activity_id=$3 AND is_adjustment=$4
+            AND ($4=false OR (hours=$5 AND adjustment_reason=$6)) LIMIT 1`, [id, before.student_id, before.activity_id, Boolean(before.is_adjustment), before.hours, before.adjustment_reason])).rows;
+        }
+        // Imports may have no activity_id; apply their identity check to online restorations too.
+        if (!clash.length && before.activity_date) {
           clash = (await client.query(`SELECT id FROM volunteer_logs WHERE id<>$1 AND status IN ('pending','approved','rejected')
             AND student_id=$2 AND activity_name=$3 AND activity_date=$4::date AND is_adjustment=$5
             AND ($5=false OR (hours=$6 AND adjustment_reason=$7)) LIMIT 1`, [id, before.student_id, before.activity_name, before.activity_date, Boolean(before.is_adjustment), before.hours, before.adjustment_reason])).rows;

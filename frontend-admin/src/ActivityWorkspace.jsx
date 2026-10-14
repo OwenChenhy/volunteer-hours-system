@@ -52,7 +52,9 @@ export default function ActivityWorkspace({
     [error, setError] = useState(''),
     [message, setMessage] = useState(''),
     [dialog, setDialog] = useState(null),
-    [dirty, setDirty] = useState(false);
+    [formDirty, setFormDirty] = useState(false),
+    [rosterDirty, setRosterDirty] = useState(false);
+  const dirty = formDirty || rosterDirty;
   useUnsavedChanges(dirty);
   const newRow = () => ({
     student_id: '',
@@ -62,6 +64,10 @@ export default function ActivityWorkspace({
     hours: '',
     phone: ''
   });
+  function clearDirty() {
+    setFormDirty(false);
+    setRosterDirty(false);
+  }
   async function load() {
     setError('');
     try {
@@ -81,7 +87,7 @@ export default function ActivityWorkspace({
     try {
       setActivity(await getActivity(id));
       setView('detail');
-      setDirty(false);
+      clearDirty();
     } catch (failure) {
       setError(failure.message);
     } finally {
@@ -107,7 +113,7 @@ export default function ActivityWorkspace({
     setReceipt(null);
     setStep(0);
     setView('wizard');
-    setDirty(false);
+    clearDirty();
     setError('');
     setMessage('');
   }
@@ -122,7 +128,7 @@ export default function ActivityWorkspace({
     setStep(1);
     setView('wizard');
     setEntry('manual');
-    setDirty(false);
+    clearDirty();
     setError('');
   }
   function edit(value) {
@@ -130,7 +136,7 @@ export default function ActivityWorkspace({
     fill(value);
     setStep(0);
     setView('edit');
-    setDirty(false);
+    clearDirty();
     setError('');
   }
   function changeForm(key, value) {
@@ -138,7 +144,7 @@ export default function ActivityWorkspace({
       ...current,
       [key]: value
     }));
-    setDirty(true);
+    setFormDirty(true);
   }
   async function saveInfo(event) {
     event.preventDefault();
@@ -148,7 +154,7 @@ export default function ActivityWorkspace({
       const saved = activity ? await updateActivity(activity.id, payload(form)) : await createActivity(payload(form));
       const fresh = await getActivity(saved.id);
       setActivity(fresh);
-      setDirty(false);
+      setFormDirty(false);
       await load();
       if (view === 'edit') {
         setView('detail');
@@ -174,7 +180,7 @@ export default function ActivityWorkspace({
       duplicate: false
     } : row));
     setReceipt(null);
-    setDirty(true);
+    setRosterDirty(true);
   }
   function parsePaste() {
     const lines = paste.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
@@ -185,7 +191,7 @@ export default function ActivityWorkspace({
     }));
     setReceipt(null);
     setEntry('manual');
-    setDirty(true);
+    setRosterDirty(true);
   }
   async function upload(file) {
     if (!file) return;
@@ -196,7 +202,7 @@ export default function ActivityWorkspace({
       setRows(result.rows);
       setReceipt(null);
       setEntry('manual');
-      setDirty(true);
+      setRosterDirty(true);
     } catch (failure) {
       setError(failure.message);
     } finally {
@@ -237,7 +243,7 @@ export default function ActivityWorkspace({
         records: receipt.rows,
         submission_key: submissionKey
       });
-      setDirty(false);
+      setRosterDirty(false);
       setMessage(result.message);
       setStep(3);
       await load();
@@ -256,8 +262,8 @@ export default function ActivityWorkspace({
     await load();
   }
   function leave() {
-    if (dirty && !window.confirm('还有未保存的名单或活动输入，确定返回吗？')) return;
-    setDirty(false);
+    if (dirty && !window.confirm('还有未保存的活动信息或未提交的名单，确定返回吗？')) return;
+    clearDirty();
     setView(view === 'detail' ? 'list' : activity ? 'detail' : 'list');
   }
   const filtered = activities.filter(value => `${value.name} ${value.org_name || ''}`.toLowerCase().includes(search.toLowerCase()));
@@ -305,20 +311,20 @@ export default function ActivityWorkspace({
           }).map(([key, label]) => <button key={key} className={entry === key ? 'selected' : ''} onClick={() => setEntry(key)}>{label}</button>)}</div>
         {entry === 'paste' && <div className="stack-form"><Field label="粘贴名单" hint="列顺序：学号、姓名、学院、年级、时长、联系方式；支持带表头的Excel复制内容。"><textarea rows={8} value={paste} onChange={event => {
               setPaste(event.target.value);
-              setDirty(true);
+              setRosterDirty(true);
             }} /></Field><button disabled={!paste.trim()} onClick={parsePaste}>解析并编辑名单</button></div>}
         {entry === 'file' && <div className="stack-form"><p>名单只提交当前活动，并进入待审核。</p><button onClick={() => downloadParticipantTemplate().catch(failure => setError(failure.message))}>下载活动名单模板</button><Field label="上传Excel名单"><input type="file" accept=".xlsx" disabled={busy} onChange={event => upload(event.target.files?.[0])} /></Field></div>}
         {entry === 'manual' && <><div className="ux-participant-list">{rows.map((row, index) => <article className="ux-participant-row" key={index}><div className="ux-participant-index">第{index + 1}行<button aria-label={`移除第${index + 1}行`} onClick={() => {
                   setRows(rows.filter((_, n) => n !== index));
-                  setDirty(true);
+                  setRosterDirty(true);
                   setReceipt(null);
                 }}>移除</button></div><div className="ux-participant-fields">{Object.entries(labels).map(([key, label]) => <Field key={key} label={label}><input aria-label={`第${index + 1}行${label}`} type={key === 'hours' ? 'number' : 'text'} min={key === 'hours' ? '0.1' : undefined} step={key === 'hours' ? '0.1' : undefined} value={row[key] ?? ''} onChange={event => changeRow(index, key, event.target.value)} /></Field>)}</div>{row.errors?.length > 0 && <p className="notice error" role="alert">{row.errors.join('；')}</p>}</article>)}</div><div className="toolbar"><button onClick={() => {
               setRows([...rows, newRow()]);
-              setDirty(true);
+              setRosterDirty(true);
             }}>增加一行</button>{rows.some(row => row.duplicate) && <button onClick={() => {
               setRows(rows.filter(row => !row.duplicate));
               setReceipt(null);
-              setDirty(true);
+              setRosterDirty(true);
             }}>移除重复行</button>}</div></>}
         <div className="ux-flow-footer"><button onClick={() => setStep(0)}>上一步：活动信息</button><button className="primary-button" disabled={busy || !rows.length || entry !== 'manual'} onClick={preview}>{busy ? '正在校验…' : '校验名单，进入预览'}</button></div></Panel>}
       {view === 'wizard' && step === 2 && receipt && <Panel title="核对名单并提交"><div className="ux-summary"><strong>{receipt.rows.length}名学生</strong><span>总时长 {hours(receipt.rows.reduce((total, row) => total + Number(row.hours), 0))} 小时</span><span>提交后进入待审核</span></div><Table columns={['学号', '姓名', '学院', '年级', '时长']} rows={receipt.rows.map(row => [row.student_id, row.student_name, row.college, row.grade || '未填写', hours(row.hours)])} /><div className="ux-flow-footer"><button disabled={busy} onClick={() => setStep(1)}>返回修改名单</button><button disabled={busy} className="primary-button" onClick={submit}>{busy ? '提交中…' : '确认提交审核'}</button></div></Panel>}

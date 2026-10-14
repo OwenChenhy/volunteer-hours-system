@@ -110,10 +110,12 @@ async function resolveActivityId(client, log, userId) {
       SELECT id
       FROM activities
       WHERE name = $1
+        AND deleted_at IS NULL
         AND COALESCE(location, '') = $2
         AND (start_time AT TIME ZONE 'Asia/Shanghai')::date = $3::date
       ORDER BY created_at DESC, id
       LIMIT 1
+      FOR SHARE NOWAIT
     `,
     [activityName, activityPeriod, activityDate],
   );
@@ -513,6 +515,8 @@ module.exports = async function (fastify, opts) {
       });
       return updated;
     } catch (err) {
+      // Candidate activity locks come after the log lock; do not wait in the reverse order.
+      if (err.code === '55P03') return reply.code(409).send({ message: '关联活动正在更新或删除，请稍后重试' });
       request.log.error({ err }, 'review update failed');
       return reply.code(500).send({ message: '复核保存失败' });
     } finally {
