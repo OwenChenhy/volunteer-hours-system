@@ -1,0 +1,435 @@
+{
+  "date": "2026-10-14",
+  "recorded_at_utc": "2026-10-14T07:42:07.165193+00:00",
+  "baseline_commit": "c563276297b5c9fc2e0096b03456642254a95848",
+  "branch": "codex/ux-refactor-20261013",
+  "pr": "https://github.com/OwenChenhy/volunteer-hours-system/pull/1",
+  "tested_source_sha256_lf": {
+    "backend/package.json": "f0f57fc6f65bd638a497babd0e29f5c13440917db5af99f5a8cca8fd8770b5cd",
+    "backend/scripts/product-optimizations-regression.js": "576394ba0dcb2a28020656f91b1dec2adcafd4b1212b600c23316d33b86e5f92",
+    "backend/src/routes/logs.js": "27fd3a386e889e987385d9bf52733f251fc8a6525faafea4703dba26ab250de4",
+    "backend/src/services/participantService.js": "381ba213e18dac949cfc34a077fe4d83204772d7d1a08be798fa47eca284c979",
+    "backend/src/services/queryService.js": "599a3a1f14f77bf36ece32079f0cf195908b0e39f6271836a88c5d390f431adb",
+    "scripts/sync-supabase-database.py": "ec625a2cdbcaa8e531532279085d54043a3b7d3103aa426c3a5a785e0b142e65",
+    "backend/scripts/resubmit-review-regression.js": "6f2af91c457c6a6e8f8215dc96456fc3a72b4ae8d7a15463ed67816c60989cdc",
+    "tools/sync-supabase-regression.py": "7adf96e990637efff44a1e68e253dd445c1c1505c4a221ac05827702bcefa24c"
+  },
+  "scope": {
+    "fixtures": "synthetic only",
+    "server_tests_only": true,
+    "production_changed": false,
+    "supabase_connected": false,
+    "software_installed": false,
+    "deployed": false,
+    "merged": false
+  },
+  "baseline": {
+    "database": {
+      "checks": [
+        {
+          "name": "resubmission after a replacement import cannot publish duplicate 2.5-hour records",
+          "passed": false
+        },
+        {
+          "name": "editable draft lookup preserves the original legacy activity name",
+          "passed": false
+        },
+        {
+          "name": "grade-only legacy editor save retains the source name and unknown date",
+          "passed": false
+        },
+        {
+          "name": "hours-only legacy editor save retains the source name and unknown date",
+          "passed": false
+        },
+        {
+          "name": "student publication still presents the friendly cumulative activity label",
+          "passed": true
+        },
+        {
+          "name": "withdrawn and rejected resubmissions detect pending approved and rejected imports",
+          "passed": false
+        },
+        {
+          "name": "resubmission checks the corrected student ID against imported records",
+          "passed": false
+        },
+        {
+          "name": "a valid correction excludes itself and remains distinct from an imported adjustment",
+          "passed": true
+        },
+        {
+          "name": "resubmission before a concurrent import leaves only one effective record",
+          "passed": false
+        },
+        {
+          "name": "import before a concurrent resubmission leaves only one effective record",
+          "passed": false
+        },
+        {
+          "name": "new participant preview and submission also reject an unlinked imported duplicate",
+          "passed": false
+        }
+      ],
+      "failed": 9
+    },
+    "mirror": {
+      "checks": [
+        {
+          "name": "same-hash replacement retires the mirrored batch before the earlier new UUID (page size 1)",
+          "passed": false
+        },
+        {
+          "name": "retired and active batches remain separate even within one large page",
+          "passed": false
+        },
+        {
+          "name": "multiple replacements preserve retired-first order across page boundaries",
+          "passed": false
+        },
+        {
+          "name": "initial mirror and repeated sync preserve histories and downstream records",
+          "passed": true
+        },
+        {
+          "name": "retirement upload failure blocks active uploads and a retry recovers",
+          "passed": false
+        }
+      ],
+      "failed": 4
+    },
+    "browser": {
+      "checks": [
+        {
+          "name": "legacy editor displays the original source activity name",
+          "passed": false
+        },
+        {
+          "name": "grade-only save preserves the legacy source name and unknown date",
+          "passed": false
+        },
+        {
+          "name": "hours-only save preserves the legacy source name and unknown date",
+          "passed": false
+        },
+        {
+          "name": "legacy lookup and editing have no browser JavaScript errors",
+          "passed": true
+        }
+      ],
+      "failed": 3
+    }
+  },
+  "fixed": {
+    "database": [
+      {
+        "name": "resubmission after a replacement import cannot publish duplicate 2.5-hour records",
+        "passed": true
+      },
+      {
+        "name": "editable draft lookup preserves the original legacy activity name",
+        "passed": true
+      },
+      {
+        "name": "grade-only legacy editor save retains the source name and unknown date",
+        "passed": true
+      },
+      {
+        "name": "hours-only legacy editor save retains the source name and unknown date",
+        "passed": true
+      },
+      {
+        "name": "student publication still presents the friendly cumulative activity label",
+        "passed": true
+      },
+      {
+        "name": "withdrawn and rejected resubmissions detect pending approved and rejected imports",
+        "passed": true
+      },
+      {
+        "name": "resubmission checks the corrected student ID against imported records",
+        "passed": true
+      },
+      {
+        "name": "a valid correction excludes itself and remains distinct from an imported adjustment",
+        "passed": true
+      },
+      {
+        "name": "resubmission before a concurrent import leaves only one effective record",
+        "passed": true
+      },
+      {
+        "name": "import before a concurrent resubmission leaves only one effective record",
+        "passed": true
+      },
+      {
+        "name": "new participant preview and submission also reject an unlinked imported duplicate",
+        "passed": true
+      }
+    ],
+    "mirror": [
+      {
+        "name": "same-hash replacement retires the mirrored batch before the earlier new UUID (page size 1)",
+        "passed": true
+      },
+      {
+        "name": "retired and active batches remain separate even within one large page",
+        "passed": true
+      },
+      {
+        "name": "multiple replacements preserve retired-first order across page boundaries",
+        "passed": true
+      },
+      {
+        "name": "initial mirror and repeated sync preserve histories and downstream records",
+        "passed": true
+      },
+      {
+        "name": "retirement upload failure blocks active uploads and a retry recovers",
+        "passed": true
+      }
+    ],
+    "browser": [
+      {
+        "name": "legacy editor displays the original source activity name",
+        "passed": true
+      },
+      {
+        "name": "grade-only save preserves the legacy source name and unknown date",
+        "passed": true
+      },
+      {
+        "name": "hours-only save preserves the legacy source name and unknown date",
+        "passed": true
+      },
+      {
+        "name": "legacy lookup and editing have no browser JavaScript errors",
+        "passed": true
+      }
+    ],
+    "total_passed": 20
+  },
+  "resubmit_publication": {
+    "baseline": {
+      "resubmit_status": 200,
+      "published_hours": 5
+    },
+    "fixed_request_rejected": true,
+    "fixed_published_hours": 2.5,
+    "fixed_published_records": 1
+  },
+  "mirror_verification": {
+    "database": "real PostgreSQL 16 source and mirror test databases",
+    "constraint": "actual mirror migration idx_import_file_hash",
+    "transport": "loopback REST compatibility test server",
+    "export": "actual export_rows SQL; Docker Compose transport adapted to the test container",
+    "bulk_request_processing": "test endpoint deliberately orders rows by ID within each request",
+    "page_sizes": [
+      1,
+      2,
+      2000
+    ],
+    "downstream_volunteer_records": "passed",
+    "cloud_rls_or_deployment_verified": false
+  },
+  "browser_verification": {
+    "backend": "real isolated API",
+    "frontend": "unchanged admin source; existing server build of c5632762"
+  },
+  "rerun": {
+    "startup": [
+      {
+        "name": "empty database initializes before publication startup",
+        "passed": true
+      },
+      {
+        "name": "Compose 001-only database receives every subsequent migration",
+        "passed": true
+      },
+      {
+        "name": "existing database survives repeated startup without losing data",
+        "passed": true
+      },
+      {
+        "name": "concurrent initialization serializes the full migration chain",
+        "passed": true
+      }
+    ],
+    "copilot_api": [
+      {
+        "name": "public verification code keeps its published total while ID and name use the draft",
+        "passed": true
+      },
+      {
+        "name": "concurrent withdrawal or voiding prevents an edit and creates no review note",
+        "passed": true
+      },
+      {
+        "name": "date validation uses the freshly locked row and releases rejected transactions",
+        "passed": true
+      },
+      {
+        "name": "review history records the latest committed value before editing",
+        "passed": true
+      },
+      {
+        "name": "preview warns about pending and rejected duplicates",
+        "passed": true
+      },
+      {
+        "name": "prepare excludes every effective duplicate from the confirmation totals",
+        "passed": true
+      },
+      {
+        "name": "confirm deduplicates pending and rejected records while permitting inactive history",
+        "passed": true
+      },
+      {
+        "name": "confirm rechecks a pending submission committed after initial normalization",
+        "passed": true
+      }
+    ],
+    "private_api": [
+      {
+        "name": "verification results are marked read-only while ID results expose the latest draft",
+        "passed": true
+      },
+      {
+        "name": "missing date and inferred legacy year are reclassified after a default date",
+        "passed": true
+      },
+      {
+        "name": "invalid February date does not retain its preview year after October replacement",
+        "passed": true
+      },
+      {
+        "name": "a valid date without an explicit year still determines the academic year",
+        "passed": true
+      },
+      {
+        "name": "an explicitly supplied academic year is preserved",
+        "passed": true
+      },
+      {
+        "name": "the administrator default academic year keeps its existing priority",
+        "passed": true
+      },
+      {
+        "name": "an explicit year in the activity period is preserved",
+        "passed": true
+      },
+      {
+        "name": "an invalid explicitly supplied year remains a validation error",
+        "passed": true
+      },
+      {
+        "name": "a cumulative row keeps its unassigned term after date completion",
+        "passed": true
+      },
+      {
+        "name": "two reviewers cannot restore two histories with the same import identity",
+        "passed": true
+      },
+      {
+        "name": "restoration and import confirmation share the same duplicate protection",
+        "passed": true
+      }
+    ],
+    "lifecycle_api": [
+      {
+        "name": "online restoration detects an unlinked import and publication stays at 2.5 hours",
+        "passed": true
+      },
+      {
+        "name": "pending and rejected imports also prevent duplicate online restoration",
+        "passed": true
+      },
+      {
+        "name": "online adjustments remain distinct from normal hours but match equal imported adjustments",
+        "passed": true
+      },
+      {
+        "name": "unknown-date imported histories remain separate and can both be restored",
+        "passed": true
+      },
+      {
+        "name": "a deleted empty activity is not reused when a new import is corrected",
+        "passed": true
+      },
+      {
+        "name": "a candidate deleted during review cannot become the new record association",
+        "passed": true
+      },
+      {
+        "name": "a live candidate is reused and cannot be deleted after association",
+        "passed": true
+      },
+      {
+        "name": "an unknown historical date does not create a synthetic activity association",
+        "passed": true
+      }
+    ],
+    "public_lookup_browser": [
+      {
+        "name": "published snapshot cannot overwrite a 4.5-hour draft through a grade-only edit",
+        "passed": true
+      },
+      {
+        "name": "ID lookup keeps draft editing and preserves corrected hours",
+        "passed": true
+      },
+      {
+        "name": "changing the query mode clears an open editor",
+        "passed": true
+      },
+      {
+        "name": "a delayed old response cannot restore a result after switching query modes",
+        "passed": true
+      },
+      {
+        "name": "student lookup has no browser JavaScript errors",
+        "passed": true
+      }
+    ],
+    "ux": {
+      "ux_integration": "passed",
+      "groups": 12,
+      "checks": [
+        "six real accounts resolve capabilities from database",
+        "hidden actions remain forbidden and refresh token is not an access token",
+        "disable and role changes invalidate old sessions immediately",
+        "ordinary profile edits preserve the active session",
+        "empty activity deletion and ownership; concurrent submission is idempotent",
+        "rejected corrections; void changes draft totals only until next publication; audited restore",
+        "adjustment restore distinguishes normal hours; unknown-date source histories stay distinct",
+        "same-file dataset update applies changed defaults without being mistaken for a replay",
+        "dataset replacement retains history; receipt owns user and revision; retries do not duplicate",
+        "account soft deletion preserves attribution and safe restore",
+        "concurrent manager deletion leaves a usable manager",
+        "offline optional cache settles within a bounded timeout"
+      ]
+    },
+    "npm_test_groups": 6,
+    "academic_publication_exit": {
+      "academic_test": 0,
+      "publication_test": 0
+    },
+    "independent_packaging": {
+      "npm_test_exit": 0,
+      "compose_001_startup": {
+        "health": 200,
+        "protected_users": 401
+      },
+      "repeat_startup": {
+        "health": 200,
+        "protected_users": 401
+      },
+      "packaged_schema": {
+        "public_counters": 2,
+        "publication_state": 1,
+        "user_roles": 6
+      }
+    }
+  },
+  "raw_evidence": "Server development checkout ux-checks/; raw requests, credentials and identifiers are excluded."
+}

@@ -20,7 +20,7 @@ db.query = async (sql, params) => {
 };
 
 const { parsePreview } = require('../src/services/importService');
-const { queryDraftStudentLogs: queryStudentLogs } = require('../src/services/queryService');
+const { queryDraftStudentLogs } = require('../src/services/queryService');
 const { buildApp } = require('../src/app');
 const { extractActivities, extractActivityDetails } = require('../../tools/prepare-march-public-detail-import');
 
@@ -107,12 +107,11 @@ async function main() {
     }
     return defaultQuery(sql, params);
   };
-  const publicQuery = await queryStudentLogs('TEST-STUDENT-P004', '累计项');
+  const draftQuery = await queryDraftStudentLogs('TEST-STUDENT-P004', '累计项');
   db.query = defaultQuery;
-  assert.strictEqual(publicQuery.records[0].activity_name, '累计时长记录');
-  assert.strictEqual(publicQuery.records[0].activity_time_label, '累计记录');
-  assert.strictEqual(publicQuery.records[0].is_summary_record, true);
-  assert(!JSON.stringify(publicQuery).includes('源表'), 'public query payload must not expose legacy placeholder wording');
+  assert.strictEqual(draftQuery.records[0].activity_name, '源表累计未拆分时长', 'editable draft lookup must preserve the source activity name');
+  assert.strictEqual(draftQuery.records[0].activity_time_label, '累计记录');
+  assert.strictEqual(draftQuery.records[0].is_summary_record, true);
 
   const sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'volunteer-source-'));
   const sourceFile = 'source-row-fixture.xlsx';

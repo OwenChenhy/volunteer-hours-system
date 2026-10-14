@@ -123,7 +123,7 @@ async function queryDraftStudentLogs(studentId, studentName, college = null) {
   }
   const totalHours = rows.reduce((sum, row) => sum + Math.round(Number(row.hours) * 10), 0) / 10;
   const version = await getDraftDataVersion();
-  return { student_id: studentId.trim(), student_name: studentName.trim(), college: rows[0].college, grade: rows[0].grade, total_hours: totalHours, academic_summaries: summaries, academic_rules: academic.rules(), data_version: version, verification_code: makeVerificationCode(studentId, studentName, totalHours, rows.length, version.revision), records: rows.map(toPublicRecord) };
+  return { student_id: studentId.trim(), student_name: studentName.trim(), college: rows[0].college, grade: rows[0].grade, total_hours: totalHours, academic_summaries: summaries, academic_rules: academic.rules(), data_version: version, verification_code: makeVerificationCode(studentId, studentName, totalHours, rows.length, version.revision), records: rows.map((row, index) => ({ ...toPublicRecord(row, index), activity_name: row.activity_name })) };
 }
 
 function makeVerificationCode(studentId, studentName, totalHours, recordCount, batchId) {

@@ -17,7 +17,8 @@
     "test:startup": "node scripts/startup-regression.js",
     "test:review": "node scripts/review-regression.js",
     "test:private-review": "node scripts/private-review-regression.js",
-    "test:lifecycle-review": "node scripts/lifecycle-review-regression.js"
+    "test:lifecycle-review": "node scripts/lifecycle-review-regression.js",
+    "test:resubmit-review": "node scripts/resubmit-review-regression.js"
   },
   "keywords": [],
   "author": "",

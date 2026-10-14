@@ -77,7 +77,8 @@ def supabase_request(method, supabase_url, service_key, table, payload=None, par
 
 def export_rows(compose_dir, service, db_name, db_user, table):
     projection = "*, md5(snapshot::text) AS snapshot_md5" if table == "publication_batches" else "*"
-    sql = f"SELECT row_to_json(t)::text FROM (SELECT {projection} FROM public.{table} ORDER BY 1) t;"
+    order = "(superseded_at IS NULL), id" if table == "import_batches" else "1"
+    sql = f"SELECT row_to_json(t)::text FROM (SELECT {projection} FROM public.{table} ORDER BY {order}) t;"
     return subprocess.Popen(
         [
             "docker",
@@ -118,10 +119,17 @@ def sync_table(compose_dir, service, db_name, db_user, supabase_url, service_key
         if not line:
             continue
         try:
-            batch.append(json.loads(line))
+            row = json.loads(line)
         except json.JSONDecodeError as exc:
             process.kill()
             raise SystemExit(f"Invalid JSON from {table} line {line_number}: {exc}") from exc
+        # Release mirrored current-hash entries before any active batch is uploaded, even within one page.
+        if table == "import_batches" and batch and batch[-1].get("superseded_at") is not None and row.get("superseded_at") is None:
+            supabase_request("POST", supabase_url, service_key, table, batch, {"on_conflict": primary_key})
+            total += len(batch)
+            batches += 1
+            batch = []
+        batch.append(row)
         if len(batch) >= batch_size:
             supabase_request("POST", supabase_url, service_key, table, batch, {"on_conflict": primary_key})
             total += len(batch)

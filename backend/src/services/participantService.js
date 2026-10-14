@@ -7,7 +7,9 @@ async function validateParticipants(client, user, activity, input) {
   if (!Array.isArray(input) || !input.length || input.length > 1000) throw Object.assign(new Error('名单须包含1至1000条记录'), {
     statusCode: 400
   });
-  const existing = (await client.query("SELECT student_id,student_name FROM volunteer_logs WHERE activity_id=$1 AND status IN ('pending','approved','rejected')", [activity.id])).rows;
+  const existing = (await client.query(`SELECT student_id,student_name FROM volunteer_logs
+    WHERE status IN ('pending','approved','rejected') AND is_adjustment=false
+      AND (activity_id=$1 OR (activity_name=$2 AND activity_date=$3::date))`, [activity.id, activity.name, activity.activity_date])).rows;
   const seen = new Set();
   return input.map((item, index) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) item = {};

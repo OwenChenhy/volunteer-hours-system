@@ -26,6 +26,17 @@ const {
 const failure = (code, message) => Object.assign(new Error(message), {
   statusCode: code
 });
+async function hasEffectiveDuplicate(client, row) {
+  // Imported histories with unknown dates cannot establish the same activity identity.
+  const result = await client.query(`SELECT id FROM volunteer_logs
+    WHERE id<>$1 AND status IN ('pending','approved','rejected')
+      AND student_id=$2 AND is_adjustment=$3
+      AND ($3=false OR (hours=$4 AND adjustment_reason=$5))
+      AND (activity_id=$6::uuid OR (activity_date=$7::date AND activity_name=$8)) LIMIT 1`,
+  [row.id, row.student_id, Boolean(row.is_adjustment), row.hours, row.adjustment_reason,
+    row.source === 'online' ? row.activity_id : null, row.activity_date, row.activity_name]);
+  return result.rowCount > 0;
+}
 async function lockedLog(client, id) {
   const hint = (await client.query('SELECT activity_id FROM volunteer_logs WHERE id=$1', [id])).rows[0];
   if (!hint) return null;
@@ -135,6 +146,7 @@ module.exports = async function (app) {
       already_submitted = false;
     try {
       await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(927641)');
       const body = request.body || {},
         activity = await activityFor(client, request, body.activity_id, true);
       const submissionKey = body.submission_key || crypto.randomUUID();
@@ -204,20 +216,7 @@ module.exports = async function (app) {
           const activity = (await client.query('SELECT status,deleted_at FROM activities WHERE id=$1 FOR UPDATE', [before.activity_id])).rows[0];
           if (!activity || activity.deleted_at || activity.status !== 'active') throw failure(409, '关联活动已删除或归档，请先恢复活动');
         }
-        let clash = [];
-        if (before.source === 'online' && before.activity_id) {
-          clash = (await client.query(`SELECT id FROM volunteer_logs WHERE id<>$1 AND status IN ('pending','approved','rejected')
-            AND student_id=$2 AND activity_id=$3 AND is_adjustment=$4
-            AND ($4=false OR (hours=$5 AND adjustment_reason=$6)) LIMIT 1`, [id, before.student_id, before.activity_id, Boolean(before.is_adjustment), before.hours, before.adjustment_reason])).rows;
-        }
-        // Imports may have no activity_id; apply their identity check to online restorations too.
-        if (!clash.length && before.activity_date) {
-          clash = (await client.query(`SELECT id FROM volunteer_logs WHERE id<>$1 AND status IN ('pending','approved','rejected')
-            AND student_id=$2 AND activity_name=$3 AND activity_date=$4::date AND is_adjustment=$5
-            AND ($5=false OR (hours=$6 AND adjustment_reason=$7)) LIMIT 1`, [id, before.student_id, before.activity_name, before.activity_date, Boolean(before.is_adjustment), before.hours, before.adjustment_reason])).rows;
-        }
-        // Unknown historical dates cannot establish duplicate activities; keep distinct source records intact.
-        if (clash.length) throw failure(409, '存在有效重复记录，不能恢复');
+        if (await hasEffectiveDuplicate(client, before)) throw failure(409, '存在有效重复记录，不能恢复');
         if (before.import_batch_id) {
           const batch = (await client.query('SELECT superseded_at FROM import_batches WHERE id=$1', [before.import_batch_id])).rows[0];
           if (batch?.superseded_at) throw failure(409, '该记录属于已替换的时长库旧版本，请通过更新时长库更正');
@@ -261,6 +260,7 @@ module.exports = async function (app) {
     try {
       if (!UUID.test(request.params.id || '')) throw failure(400, '记录编号无效');
       await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(927641)');
       const before = await lockedLog(client, request.params.id);
       if (!before) throw failure(404, '记录不存在');
       if (before.submitted_by !== request.user.id && !hasFullAccess(request.user)) throw failure(403, '只能重新提交自己的记录');
@@ -274,8 +274,7 @@ module.exports = async function (app) {
       const row = rows[0];
       // A rejected record is the row being replaced, not a second participant.
       row.errors = row.errors.filter(error => !error.startsWith('同一活动'));
-      const clash = (await client.query("SELECT id FROM volunteer_logs WHERE activity_id=$1 AND student_id=$2 AND id<>$3 AND status IN ('pending','approved','rejected')", [activity.id, row.student_id, before.id])).rows;
-      if (clash.length) row.errors.push('同一活动已有该学生的有效记录');
+      if (await hasEffectiveDuplicate(client, { ...before, ...row })) row.errors.push('同一活动已有该学生的有效记录');
       if (row.errors.length) throw failure(400, row.errors.join('；'));
       updated = (await client.query(`UPDATE volunteer_logs SET student_id=$2,student_name=$3,college=$4,grade=$5,hours=$6,phone=$7,
         status='pending',reject_reason=NULL,reviewed_by=NULL,reviewed_at=NULL,lifecycle_previous_status=NULL,
