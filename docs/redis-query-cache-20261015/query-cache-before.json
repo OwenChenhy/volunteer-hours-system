@@ -1,0 +1,114 @@
+[
+  {
+    "name": "first HTTP student query writes a Redis result with a five-minute TTL",
+    "passed": false,
+    "error": "no student result was written to Redis",
+    "ms": 52
+  },
+  {
+    "name": "repeat HTTP queries hit Redis, skip business record reads, and still count visits",
+    "passed": false,
+    "error": "warm queries must not re-read volunteer_logs\n\n9 !== 0\n",
+    "ms": 99
+  },
+  {
+    "name": "normalized identity uses the same cached result",
+    "passed": false,
+    "error": "Expected values to be strictly equal:\n\n11 !== 10\n",
+    "ms": 9
+  },
+  {
+    "name": "another backend process reuses the same Redis result",
+    "passed": false,
+    "error": "isolated child process failed: \n\n1 !== 0\n",
+    "ms": 259
+  },
+  {
+    "name": "parallel cold queries share one database load",
+    "passed": false,
+    "error": "Expected values to be strictly equal:\n\n20 !== 1\n",
+    "ms": 66
+  },
+  {
+    "name": "wrong names and matching IDs with other names never reuse personal results",
+    "passed": true,
+    "ms": 18
+  },
+  {
+    "name": "cached ranking uses the canonical student profile and hides other identities",
+    "passed": false,
+    "error": "{\"message\":\"学院或年级信息缺失，请先联系办公室核对\"}\n\n409 !== 200\n",
+    "ms": 4
+  },
+  {
+    "name": "ranking cache hits skip rebuilding rankings and preserve per-student masking",
+    "passed": false,
+    "error": "Expected values to be strictly equal:\n\n409 !== 200\n",
+    "ms": 3
+  },
+  {
+    "name": "ranking pages, limits and invalid identities are separated before cache lookup",
+    "passed": false,
+    "error": "Expected values to be strictly equal:\n\n409 !== 200\n",
+    "ms": 3
+  },
+  {
+    "name": "editing approved draft hours invalidates progress without changing published totals",
+    "passed": true,
+    "ms": 1122
+  },
+  {
+    "name": "pending-only students and rejected progress refresh before publication",
+    "passed": true,
+    "ms": 2227
+  },
+  {
+    "name": "publishing a new version bypasses old personal and ranking results immediately",
+    "passed": false,
+    "error": "Cannot read properties of undefined (reading 'find')",
+    "ms": 50
+  },
+  {
+    "name": "a publication from another process refreshes this process within the version interval",
+    "passed": true,
+    "ms": 1720
+  },
+  {
+    "name": "cached queries never replace the editable admin draft lookup",
+    "passed": true,
+    "ms": 1137
+  },
+  {
+    "name": "expired or corrupt JSON results are safely rebuilt",
+    "passed": false,
+    "error": "The expression evaluated to a falsy value:\n\n  assert(ownKeys.length)\n",
+    "ms": 19
+  },
+  {
+    "name": "a stalled Redis command falls back within the timeout",
+    "passed": true,
+    "ms": 9
+  },
+  {
+    "name": "Redis reconnects after failure without restarting the backend",
+    "passed": false,
+    "error": "recovered Redis must resume cache hits\n\n42 !== 41\n",
+    "ms": 5112
+  },
+  {
+    "name": "an unresponsive TCP handshake is bounded and does not prevent queries",
+    "passed": true,
+    "ms": 18
+  },
+  {
+    "name": "Redis absent from configuration preserves the public query contract",
+    "passed": true,
+    "ms": 6
+  },
+  {
+    "name": "warm repeated service queries avoid all business record reads",
+    "passed": false,
+    "error": "Expected values to be strictly equal:\n\n145 !== 45\n",
+    "ms": 225
+  }
+]

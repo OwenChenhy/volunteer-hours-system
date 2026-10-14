@@ -1,0 +1,27 @@
+[
+  {
+    "name": "backend image starts on isolated data",
+    "passed": true,
+    "image_id": "sha256:4c5a14f274ecb94f7be7a683acc5f9ba2f317a2643f71f0874d87ba2bab1134a"
+  },
+  {
+    "name": "desktop real frontend query and automatic ranking",
+    "passed": true
+  },
+  {
+    "name": "repeat frontend query increases real Redis hits",
+    "passed": true
+  },
+  {
+    "name": "another browser reuses personal and ranking caches",
+    "passed": true
+  },
+  {
+    "name": "other student gets separate self identity and masked peers",
+    "passed": true
+  },
+  {
+    "name": "375px frontend works without JavaScript or API errors",
+    "passed": true
+  }
+]
