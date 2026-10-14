@@ -20,8 +20,8 @@ function prepare(batch) {
     people.get(identity).push(row);
     originals.set(row.id, fingerprint(row));
   }
-  // SQL orders the totals once. Filtering that order preserves ties and pagination in every scope.
-  for (const row of batch.snapshot.totals) {
+  // Derive rankings from frozen records so older snapshots with split profiles also remain consistent.
+  for (const row of academic.publicationTotals(batch.snapshot.records)) {
     for (const [college, grade] of [[null, null], [row.college || null, null], [null, row.grade || null], [row.college || null, row.grade || null]].filter((value, index, all) => all.findIndex(other => key(...other) === key(...value)) === index)) {
       const scope = key(row.academic_year, college, grade);
       if (!scopes.has(scope)) scopes.set(scope, []);
@@ -62,17 +62,7 @@ async function publish(userId, input, bootstrap = false) {
     if (!batch) {
       const expr = academic.expressions();
       const records = (await client.query(`SELECT ${COLUMNS}, ${expr.year} AS classified_year, ${expr.term} AS classified_term FROM volunteer_logs l WHERE status = 'approved' ORDER BY activity_date DESC, created_at DESC, id`)).rows;
-      const totals = (await client.query(`WITH classified AS (
-        SELECT student_id, student_name, college, grade, hours, ${expr.year} AS academic_year, ${expr.term} AS term
-        FROM volunteer_logs l WHERE status = 'approved'
-      ) SELECT academic_year, student_id, student_name, college, grade,
-        COALESCE(SUM(hours) FILTER (WHERE term='upper'),0) AS upper_hours,
-        COALESCE(SUM(hours) FILTER (WHERE term='lower'),0) AS lower_hours,
-        COALESCE(SUM(hours) FILTER (WHERE term='vacation'),0) AS vacation_hours,
-        COALESCE(SUM(hours) FILTER (WHERE term='unassigned'),0) AS unassigned_hours,
-        SUM(hours) AS total_hours FROM classified
-        GROUP BY academic_year, student_id, student_name, college, grade
-        ORDER BY total_hours DESC, student_id, student_name, college, grade`)).rows.map(row => Object.fromEntries(Object.entries(row).map(([field, value]) => [field, field.endsWith('_hours') ? Number(value) : value])));
+      const totals = academic.publicationTotals(records);
       const totalHours = records.reduce((sum, row) => sum + Math.round(Number(row.hours) * 10), 0) / 10;
       const snapshot = { records, totals, rules: academic.rules() };
       batch = (await client.query(`INSERT INTO publication_batches(publication_month,label,source_revision,published_by,record_count,total_hours,snapshot)

@@ -1,5 +1,5 @@
 const db = require('../db');
-const { LEGACY_LABEL } = require('./academicService');
+const { LEGACY_LABEL, profilesCTE } = require('./academicService');
 
 async function getOverview() {
   const stats = await db.query(`
@@ -19,10 +19,11 @@ async function getOverview() {
 
 async function getByCollege() {
   const result = await db.query(`
-    SELECT college, SUM(hours) as total_hours, COUNT(*) as record_count
-    FROM volunteer_logs
-    WHERE status = 'approved'
-    GROUP BY college
+    WITH ${profilesCTE()}
+    SELECT p.college, SUM(l.hours) as total_hours, COUNT(*) as record_count
+    FROM volunteer_logs l JOIN profiles p USING(student_id,student_name)
+    WHERE l.status = 'approved'
+    GROUP BY p.college
     ORDER BY total_hours DESC
   `);
   return result.rows;
@@ -45,12 +46,13 @@ async function getByMonth() {
 async function getRankings() {
   const [studentTop, activityTop, collegeTop] = await Promise.all([
     db.query(`
-      SELECT student_id, student_name, college,
-             SUM(hours) AS total_hours,
+      WITH ${profilesCTE()}
+      SELECT l.student_id, l.student_name, p.college,
+             SUM(l.hours) AS total_hours,
              COUNT(*) AS record_count
-      FROM volunteer_logs
-      WHERE status = 'approved'
-      GROUP BY student_id, student_name, college
+      FROM volunteer_logs l JOIN profiles p USING(student_id,student_name)
+      WHERE l.status = 'approved'
+      GROUP BY l.student_id, l.student_name, p.college
       ORDER BY total_hours DESC
       LIMIT 50
     `),

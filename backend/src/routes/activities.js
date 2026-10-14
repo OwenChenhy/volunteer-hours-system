@@ -6,6 +6,7 @@ const {
 } = require('../middlewares/auth');
 const {
   requireCapability,
+  hasCapability,
   hasFullAccess
 } = require('../middlewares/rbac');
 const {
@@ -120,17 +121,41 @@ module.exports = async function (app) {
   });
   async function mutate(request, reply, action) {
     const client = await db.pool.connect();
-    let activity;
+    let activity, syncedFields = [];
     try {
       await client.query('BEGIN');
       const before = await find(client, request, true);
       if (before.deleted_at && action !== 'restore') throw failure(409, '活动已删除，请先恢复');
       if (action === 'update') {
         const values = data(request.body || {}, request.user, before);
+        const updates = [], params = [before.id];
+        function syncField(field, value) {
+          params.push(value); updates.push(`${field}=$${params.length}`); syncedFields.push(field);
+        }
+        if (values[0] !== before.name) syncField('activity_name', values[0]);
+        const dateChanged = (await client.query(`SELECT
+          ($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date IS DISTINCT FROM
+          ($2::timestamptz AT TIME ZONE 'Asia/Shanghai')::date AS changed`, [before.start_time, values[1]])).rows[0].changed;
+        if (dateChanged) {
+          params.push(values[1]); updates.push(`activity_date=($${params.length}::timestamptz AT TIME ZONE 'Asia/Shanghai')::date`);
+          syncedFields.push('activity_date');
+          if (values[1]) {
+            params.push(academic.LEGACY_LABEL);
+            updates.push(`activity_period=CASE WHEN activity_period=$${params.length} THEN NULL ELSE activity_period END`);
+          }
+        }
+        if (values[6] !== (before.academic_year || null)) syncField('academic_year', values[6]);
+        if (values[7] !== (before.academic_term || null)) syncField('academic_term', values[7]);
+        if (updates.length) {
+          // Lock before checking approval so a concurrent review cannot change the permission boundary.
+          const records = (await client.query('SELECT id,status FROM volunteer_logs WHERE activity_id=$1 ORDER BY id FOR UPDATE', [before.id])).rows;
+          if (records.some(row => row.status === 'approved') && !hasCapability(request.user.role, 'reviews:manage')) {
+            throw failure(403, '活动含已审核名单，修改活动名称、日期或归属需要复核权限，请联系办公室');
+          }
+        }
         activity = (await client.query(`UPDATE activities SET name=$2,start_time=$3,end_time=$4,location=$5,org_name=$6,
           description=$7,academic_year=$8,academic_term=$9 WHERE id=$1 RETURNING *`, [before.id, ...values])).rows[0];
-        await client.query(`UPDATE volunteer_logs SET activity_name=$2,activity_date=($3::timestamptz AT TIME ZONE 'Asia/Shanghai')::date,
-          academic_year=$4,academic_term=$5,activity_period=CASE WHEN $3::timestamptz IS NOT NULL AND activity_period=$6 THEN NULL ELSE activity_period END WHERE activity_id=$1`, [before.id, values[0], values[1], values[6], values[7], academic.LEGACY_LABEL]);
+        if (updates.length) await client.query(`UPDATE volunteer_logs SET ${updates.join(',')} WHERE activity_id=$1`, params);
       } else if (action === 'delete') {
         const count = (await client.query("SELECT count(*)::int AS count FROM volunteer_logs WHERE activity_id=$1 AND status IN ('pending','approved','rejected')", [before.id])).rows[0].count;
         if (count) throw failure(409, `活动仍有${count}条有效名单记录，请先撤回或作废记录，或选择归档`);
@@ -152,7 +177,8 @@ module.exports = async function (app) {
       client.release();
     }
     await writeAudit(request, `activity.${action}`, 'activity', activity.id, {
-      name: activity.name
+      name: activity.name,
+      ...(syncedFields.length ? { synced_fields: syncedFields } : {})
     });
     return activity;
   }

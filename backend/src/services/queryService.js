@@ -13,7 +13,7 @@ async function queryStudentLogs(student_id, student_name, college = null, state 
   const rows = (state.people.get(publication.identityKey(sId, sName)) || []).filter(row => !college || row.college === college);
   const progress = (await publication.progress(state, sId, sName)).filter(row => !college || row.college === college);
   if (!rows.length && !progress.length) return null;
-  const person = rows[0] || progress[0];
+  const person = { ...(rows[0] || progress[0]), ...academic.studentProfile(rows.length ? rows : progress) };
   const dataVersion = publication.meta(state);
   const publishedRows = rows.map(row => ({ ...row, academic_year: row.classified_year, academic_term: row.classified_term }));
   const totalHours = rows.reduce((sum, row) => sum + Math.round(Number(row.hours) * 10), 0) / 10;
@@ -21,7 +21,8 @@ async function queryStudentLogs(student_id, student_name, college = null, state 
   for (const summary of academicSummaries) {
     if (!summary.academic_year) continue;
     const cohort = publication.summary(state, { academic_year: summary.academic_year, college: person.college, grade: person.grade, student_id: sId });
-    summary.rank = cohort.rows.find((row) => row.student_name === sName)?.rank || null;
+    const ranked = cohort.rows.find(row => row.student_name === sName);
+    summary.rank = ranked?.total_hours === summary.total_hours ? ranked.rank : null;
     summary.total_students = cohort.total_students;
   }
   const payload = {
@@ -114,16 +115,18 @@ async function queryDraftStudentLogs(studentId, studentName, college = null) {
   const rows = (await db.query(`SELECT id,student_id,student_name,college,grade,academic_year,academic_term,is_adjustment,activity_name,activity_date,activity_period,hours,source,import_detail_status,source_total_hours,created_at
     FROM volunteer_logs WHERE student_id = $1 AND student_name = $2 AND status = 'approved' ${college ? 'AND college = $3' : ''} ORDER BY activity_date DESC,created_at DESC`, params)).rows;
   if (!rows.length) return null;
+  const profile = academic.studentProfile(rows);
   const summaries = academic.summarize(rows);
   for (const item of summaries) {
     if (!item.academic_year) continue;
-    const scope = await academic.getSummary({ academic_year: item.academic_year, college: rows[0].college, grade: rows[0].grade, student_id: studentId.trim() });
-    item.rank = scope.rows.find(row => row.student_name === studentName.trim())?.rank || null;
+    const scope = await academic.getSummary({ academic_year: item.academic_year, college: profile.college, grade: profile.grade, student_id: studentId.trim() });
+    const ranked = scope.rows.find(row => row.student_name === studentName.trim());
+    item.rank = ranked?.total_hours === item.total_hours ? ranked.rank : null;
     item.total_students = scope.total_students;
   }
   const totalHours = rows.reduce((sum, row) => sum + Math.round(Number(row.hours) * 10), 0) / 10;
   const version = await getDraftDataVersion();
-  return { student_id: studentId.trim(), student_name: studentName.trim(), college: rows[0].college, grade: rows[0].grade, total_hours: totalHours, academic_summaries: summaries, academic_rules: academic.rules(), data_version: version, verification_code: makeVerificationCode(studentId, studentName, totalHours, rows.length, version.revision), records: rows.map((row, index) => ({ ...toPublicRecord(row, index), activity_name: row.activity_name })) };
+  return { student_id: studentId.trim(), student_name: studentName.trim(), college: profile.college, grade: profile.grade, total_hours: totalHours, academic_summaries: summaries, academic_rules: academic.rules(), data_version: version, verification_code: makeVerificationCode(studentId, studentName, totalHours, rows.length, version.revision), records: rows.map((row, index) => ({ ...toPublicRecord(row, index), activity_name: row.activity_name })) };
 }
 
 function makeVerificationCode(studentId, studentName, totalHours, recordCount, batchId) {

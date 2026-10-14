@@ -3,6 +3,12 @@ const db = require('../db');
 const academic = require('./academicService');
 const { normalizeCollegeName, isFormalCollegeName } = require('../utils/collegeNames');
 
+function textLimitIssues(row) {
+  return [['adjustment_reason', 512, '调整说明'], ['activity_period', 64, '活动期间']]
+    .filter(([field, limit]) => Array.from(row[field] || '').length > limit)
+    .map(([field, limit, label]) => ({ code: `${field}_too_long`, message: `${label}超过 ${limit} 个字符，请修正原始数据` }));
+}
+
 /**
  * 解析 Excel 文件并返回预览数据
  * @param {Buffer} buffer - Excel 文件内容
@@ -63,6 +69,7 @@ const parsePreview = async (buffer) => {
       if (previewRow.academic_year && !academic.validYear(previewRow.academic_year)) addIssue(previewRow, 'invalid_academic_year', 'error', '学年必须为连续两年，例如2025-2026');
       if (rowData.academic_term && !previewRow.academic_term) addIssue(previewRow, 'invalid_academic_term', 'error', '阶段须为上半年、下半年或寒暑假补录');
       if (previewRow.is_adjustment && !previewRow.adjustment_reason) addIssue(previewRow, 'missing_adjustment_reason', 'error', '调整记录必须填写调整说明');
+      for (const issue of textLimitIssues(previewRow)) addIssue(previewRow, issue.code, 'error', issue.message);
       if (previewRow.is_cumulative) addIssue(previewRow, 'cumulative_table', 'warning', '本表为累计数据，请用同一批次备注替换旧累计表，不能直接叠加');
       if (!previewRow.student_id || !previewRow.student_name) {
         addIssue(previewRow, 'missing_identity', 'error', '学号或姓名不能为空');
@@ -535,6 +542,8 @@ async function prepareImportRow(row, options) {
     is_adjustment: row.is_adjustment === true,
     adjustment_reason: normalizeCell(row.adjustment_reason)
   };
+  const textIssue = textLimitIssues(record)[0];
+  if (textIssue) throw importValidationError(`第 ${rowNumber} 行${textIssue.message}`);
 
   if (!record.student_id || !record.student_name) {
     throw importValidationError(`第 ${rowNumber} 行学号或姓名不能为空`);
