@@ -18,6 +18,8 @@ TABLES = [
     ("import_batches", "id"),
     ("operation_logs", "id"),
     ("volunteer_logs", "id"),
+    ("publication_batches", "id"),
+    ("publication_state", "id"),
     ("review_notes", "id"),
 ]
 
@@ -74,7 +76,9 @@ def supabase_request(method, supabase_url, service_key, table, payload=None, par
 
 
 def export_rows(compose_dir, service, db_name, db_user, table):
-    sql = f"SELECT row_to_json(t)::text FROM (SELECT * FROM public.{table} ORDER BY 1) t;"
+    projection = "*, md5(snapshot::text) AS snapshot_md5" if table == "publication_batches" else "*"
+    order = "(superseded_at IS NULL), id" if table == "import_batches" else "1"
+    sql = f"SELECT row_to_json(t)::text FROM (SELECT {projection} FROM public.{table} ORDER BY {order}) t;"
     return subprocess.Popen(
         [
             "docker",
@@ -102,6 +106,8 @@ def export_rows(compose_dir, service, db_name, db_user, table):
 
 
 def sync_table(compose_dir, service, db_name, db_user, supabase_url, service_key, table, primary_key, batch_size):
+    if table == 'publication_batches':
+        return sync_publications(compose_dir, service, db_name, db_user, supabase_url, service_key)
     process = export_rows(compose_dir, service, db_name, db_user, table)
     total = 0
     batches = 0
@@ -113,10 +119,17 @@ def sync_table(compose_dir, service, db_name, db_user, supabase_url, service_key
         if not line:
             continue
         try:
-            batch.append(json.loads(line))
+            row = json.loads(line)
         except json.JSONDecodeError as exc:
             process.kill()
             raise SystemExit(f"Invalid JSON from {table} line {line_number}: {exc}") from exc
+        # Release mirrored current-hash entries before any active batch is uploaded, even within one page.
+        if table == "import_batches" and batch and batch[-1].get("superseded_at") is not None and row.get("superseded_at") is None:
+            supabase_request("POST", supabase_url, service_key, table, batch, {"on_conflict": primary_key})
+            total += len(batch)
+            batches += 1
+            batch = []
+        batch.append(row)
         if len(batch) >= batch_size:
             supabase_request("POST", supabase_url, service_key, table, batch, {"on_conflict": primary_key})
             total += len(batch)
@@ -134,6 +147,59 @@ def sync_table(compose_dir, service, db_name, db_user, supabase_url, service_key
         raise SystemExit(f"Export {table} failed with exit {code}: {stderr}")
 
     return {"table": table, "rows": total, "batches": batches}
+
+
+def publication_rpc(supabase_url, service_key, payload):
+    req = urllib.request.Request(
+        supabase_url.rstrip('/') + '/rest/v1/rpc/sync_publication_snapshot',
+        data=json.dumps(payload, ensure_ascii=False).encode('utf-8'), method='POST',
+        headers={**auth_headers(service_key), 'Content-Type': 'application/json'},
+    )
+    with urllib.request.urlopen(req, timeout=90) as response:
+        return json.loads(response.read())
+
+
+def sync_publications(compose_dir, service, db_name, db_user, supabase_url, service_key):
+    endpoint = supabase_url.rstrip('/') + '/rest/v1/publication_batches?' + urllib.parse.urlencode({'select': 'id,uploading:snapshot->>_uploading'})
+    with urllib.request.urlopen(urllib.request.Request(endpoint, headers=auth_headers(service_key)), timeout=30) as response:
+        existing = {row['id'] for row in json.loads(response.read()) if row.get('uploading') != 'true'}
+    process = export_rows(compose_dir, service, db_name, db_user, 'publication_batches')
+    total = skipped = uploaded = chunks = 0
+    assert process.stdout is not None
+    try:
+        for raw in process.stdout:
+            if not raw.strip(): continue
+            row = json.loads(raw); total += 1
+            if row['id'] in existing:
+                # Frozen versions are immutable; avoid rewriting previously verified large snapshots.
+                skipped += 1
+                continue
+            digest = row.pop('snapshot_md5')
+            snapshot = row.pop('snapshot')
+            publication_rpc(supabase_url, service_key, {'p_id':row['id'], 'p_operation':'begin', 'p_metadata':{**row, 'rules':snapshot['rules']}})
+            for field in ['records', 'totals']:
+                batch = []; size = 2
+                for record in snapshot[field]:
+                    record_size = len(json.dumps(record, ensure_ascii=False).encode('utf-8')) + 2
+                    if batch and (size + record_size > 700000 or len(batch) >= 1000):
+                        publication_rpc(supabase_url, service_key, {'p_id':row['id'], 'p_operation':'append', 'p_field':field, 'p_chunk':batch})
+                        chunks += 1; batch = []; size = 2
+                    batch.append(record); size += record_size
+                if batch:
+                    publication_rpc(supabase_url, service_key, {'p_id':row['id'], 'p_operation':'append', 'p_field':field, 'p_chunk':batch})
+                    chunks += 1
+            # ponytail: appends rewrite JSONB; use Storage for frozen snapshots if this 34k-row monthly library grows substantially.
+            proof = publication_rpc(supabase_url, service_key, {'p_id':row['id'], 'p_operation':'finish', 'p_digest':digest})
+            if proof.get('digest') != digest or proof.get('records') != row['record_count'] or proof.get('uploading'):
+                raise RuntimeError('publication mirror verification failed')
+            uploaded += 1
+        error = process.stderr.read() if process.stderr else ''
+        if process.wait() != 0:
+            raise RuntimeError('publication export failed')
+    except BaseException:
+        process.kill(); process.wait()
+        raise
+    return {'table':'publication_batches','rows':total,'batches':chunks,'uploaded_versions':uploaded,'existing_versions':skipped}
 
 
 def clear_table(supabase_url, service_key, table, primary_key):

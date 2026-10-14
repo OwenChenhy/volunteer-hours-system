@@ -1,4 +1,5 @@
 const db = require('../db');
+const { LEGACY_LABEL, profilesCTE } = require('./academicService');
 
 async function getOverview() {
   const stats = await db.query(`
@@ -6,22 +7,23 @@ async function getOverview() {
       COUNT(*) FILTER (WHERE status = 'pending') as pending_count,
       COUNT(*) FILTER (WHERE status = 'approved') as approved_count,
       COUNT(*) FILTER (WHERE status = 'rejected') as rejected_count,
-      COUNT(*) FILTER (WHERE source = 'imported' AND is_legacy_processed = false) as legacy_todo_count,
+      COUNT(*) FILTER (WHERE source = 'imported' AND status IN ('pending','approved','rejected') AND is_legacy_processed = false) as legacy_todo_count,
       COALESCE(SUM(hours) FILTER (WHERE status = 'approved'), 0) as total_hours,
       COUNT(*) as total_records,
       COUNT(DISTINCT student_id) FILTER (WHERE status = 'approved') as total_students,
       COUNT(DISTINCT COALESCE(activity_id::text, activity_name)) FILTER (WHERE status = 'approved') as activity_count
-    FROM volunteer_logs
+    FROM volunteer_logs WHERE status IN ('pending','approved','rejected')
   `);
   return stats.rows[0];
 }
 
 async function getByCollege() {
   const result = await db.query(`
-    SELECT college, SUM(hours) as total_hours, COUNT(*) as record_count
-    FROM volunteer_logs
-    WHERE status = 'approved'
-    GROUP BY college
+    WITH ${profilesCTE()}
+    SELECT p.college, SUM(l.hours) as total_hours, COUNT(*) as record_count
+    FROM volunteer_logs l JOIN profiles p USING(student_id,student_name)
+    WHERE l.status = 'approved'
+    GROUP BY p.college
     ORDER BY total_hours DESC
   `);
   return result.rows;
@@ -29,7 +31,8 @@ async function getByCollege() {
 
 async function getByMonth() {
   const result = await db.query(`
-    SELECT to_char(date_trunc('month', activity_date), 'YYYY-MM') as month,
+    SELECT CASE WHEN activity_date IS NULL THEN '${LEGACY_LABEL}'
+           ELSE to_char(date_trunc('month', activity_date), 'YYYY-MM') END as month,
            SUM(hours) as total_hours,
            COUNT(*) as record_count
     FROM volunteer_logs
@@ -43,12 +46,13 @@ async function getByMonth() {
 async function getRankings() {
   const [studentTop, activityTop, collegeTop] = await Promise.all([
     db.query(`
-      SELECT student_id, student_name, college,
-             SUM(hours) AS total_hours,
+      WITH ${profilesCTE()}
+      SELECT l.student_id, l.student_name, p.college,
+             SUM(l.hours) AS total_hours,
              COUNT(*) AS record_count
-      FROM volunteer_logs
-      WHERE status = 'approved'
-      GROUP BY student_id, student_name, college
+      FROM volunteer_logs l JOIN profiles p USING(student_id,student_name)
+      WHERE l.status = 'approved'
+      GROUP BY l.student_id, l.student_name, p.college
       ORDER BY total_hours DESC
       LIMIT 50
     `),
@@ -80,7 +84,7 @@ async function getProblemStats() {
              COUNT(*) AS record_count,
              COALESCE(SUM(hours), 0) AS total_hours
       FROM volunteer_logs
-      WHERE source = 'imported'
+      WHERE source = 'imported' AND status IN ('pending','approved','rejected')
       GROUP BY COALESCE(import_detail_status, 'normal')
       ORDER BY record_count DESC
     `),
@@ -89,7 +93,7 @@ async function getProblemStats() {
              COALESCE(import_detail_status, 'normal') AS problem_type,
              COUNT(*) AS record_count
       FROM volunteer_logs
-      WHERE source = 'imported'
+      WHERE source = 'imported' AND status IN ('pending','approved','rejected')
       GROUP BY day, problem_type
       ORDER BY day DESC, problem_type
       LIMIT 120

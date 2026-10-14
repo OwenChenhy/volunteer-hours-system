@@ -1,0 +1,105 @@
+{
+  "date": "2026-10-13",
+  "environment": "isolated server-local PostgreSQL and synthetic accounts/records",
+  "production_modified": false,
+  "remote_supabase_migration_applied": false,
+  "ux": {
+    "ux_integration": "passed",
+    "groups": 12,
+    "checks": [
+      "six real accounts resolve capabilities from database",
+      "hidden actions remain forbidden and refresh token is not an access token",
+      "disable and role changes invalidate old sessions immediately",
+      "ordinary profile edits preserve the active session",
+      "empty activity deletion and ownership; concurrent submission is idempotent",
+      "rejected corrections; void changes draft totals only until next publication; audited restore",
+      "adjustment restore distinguishes normal hours; unknown-date source histories stay distinct",
+      "same-file dataset update applies changed defaults without being mistaken for a replay",
+      "dataset replacement retains history; receipt owns user and revision; retries do not duplicate",
+      "account soft deletion preserves attribution and safe restore",
+      "concurrent manager deletion leaves a usable manager",
+      "offline optional cache settles within a bounded timeout"
+    ]
+  },
+  "browser": {
+    "browser_qa": "passed",
+    "checks": [
+      {
+        "role": "organizer",
+        "visible_pages": 4,
+        "no_unauthorized_requests": true,
+        "no_js_errors": true
+      },
+      {
+        "forbidden_deep_link_falls_back": "passed"
+      },
+      {
+        "role": "college_admin",
+        "visible_pages": 8,
+        "no_unauthorized_requests": true,
+        "no_js_errors": true
+      },
+      {
+        "browser_activity_to_pending": "passed",
+        "back_preserves_input": "passed",
+        "mobile_width": 375
+      },
+      {
+        "role": "data_admin",
+        "visible_pages": 9,
+        "no_unauthorized_requests": true,
+        "no_js_errors": true
+      },
+      {
+        "import_wizard_to_result": "passed"
+      },
+      {
+        "role": "auditor",
+        "visible_pages": 7,
+        "no_unauthorized_requests": true,
+        "no_js_errors": true
+      },
+      {
+        "role": "admin",
+        "visible_pages": 14,
+        "no_unauthorized_requests": true,
+        "no_js_errors": true
+      },
+      {
+        "account_delete_and_restore_in_browser": "passed"
+      },
+      {
+        "role": "super_admin",
+        "visible_pages": 14,
+        "no_unauthorized_requests": true,
+        "no_js_errors": true
+      }
+    ],
+    "screenshots": [
+      "account-management.png",
+      "import-upload-desktop.png",
+      "activity-preview-desktop.png",
+      "import-upload-mobile.png",
+      "import-summary-mobile.png",
+      "activity-preview-mobile.png"
+    ]
+  },
+  "original_regressions": "passed",
+  "legacy_integrations": {
+    "academic_test": 0,
+    "publication_test": 0
+  },
+  "mirror_compatibility": {
+    "enum": "passed",
+    "text": "passed",
+    "repeat_application": "passed",
+    "remote_supabase_applied": false
+  },
+  "admin_build": "passed",
+  "query_build": "passed",
+  "backend_package": {
+    "backend_package": "passed",
+    "health": 200,
+    "protected_users": 401
+  }
+}

@@ -1,0 +1,155 @@
+{
+  "reviewed_commit": "64447ab027dccc030981cea7c23ab0e8471a74d5",
+  "pull_request": 1,
+  "environment": "isolated server databases; synthetic fixtures; existing dependencies",
+  "production_changed": false,
+  "merged_or_deployed": false,
+  "before": {
+    "startup-regression.js": [
+      {
+        "name": "empty database initializes before publication startup",
+        "passed": false
+      },
+      {
+        "name": "Compose 001-only database receives every subsequent migration",
+        "passed": false
+      },
+      {
+        "name": "existing database survives repeated startup without losing data",
+        "passed": true
+      },
+      {
+        "name": "concurrent initialization serializes the full migration chain",
+        "passed": false
+      }
+    ],
+    "review-regression.js": [
+      {
+        "name": "public verification code keeps its published total while ID and name use the draft",
+        "passed": false
+      },
+      {
+        "name": "concurrent withdrawal or voiding prevents an edit and creates no review note",
+        "passed": false
+      },
+      {
+        "name": "date validation uses the freshly locked row and releases rejected transactions",
+        "passed": false
+      },
+      {
+        "name": "review history records the latest committed value before editing",
+        "passed": false
+      },
+      {
+        "name": "preview warns about pending and rejected duplicates",
+        "passed": false
+      },
+      {
+        "name": "prepare excludes every effective duplicate from the confirmation totals",
+        "passed": false
+      },
+      {
+        "name": "confirm deduplicates pending and rejected records while permitting inactive history",
+        "passed": false
+      },
+      {
+        "name": "confirm rechecks a pending submission committed after initial normalization",
+        "passed": false
+      }
+    ]
+  },
+  "after": {
+    "startup-regression.js": [
+      {
+        "name": "empty database initializes before publication startup",
+        "passed": true
+      },
+      {
+        "name": "Compose 001-only database receives every subsequent migration",
+        "passed": true
+      },
+      {
+        "name": "existing database survives repeated startup without losing data",
+        "passed": true
+      },
+      {
+        "name": "concurrent initialization serializes the full migration chain",
+        "passed": true
+      }
+    ],
+    "startup-regression.js:exit": 0,
+    "review-regression.js": [
+      {
+        "name": "public verification code keeps its published total while ID and name use the draft",
+        "passed": true
+      },
+      {
+        "name": "concurrent withdrawal or voiding prevents an edit and creates no review note",
+        "passed": true
+      },
+      {
+        "name": "date validation uses the freshly locked row and releases rejected transactions",
+        "passed": true
+      },
+      {
+        "name": "review history records the latest committed value before editing",
+        "passed": true
+      },
+      {
+        "name": "preview warns about pending and rejected duplicates",
+        "passed": true
+      },
+      {
+        "name": "prepare excludes every effective duplicate from the confirmation totals",
+        "passed": true
+      },
+      {
+        "name": "confirm deduplicates pending and rejected records while permitting inactive history",
+        "passed": true
+      },
+      {
+        "name": "confirm rechecks a pending submission committed after initial normalization",
+        "passed": true
+      }
+    ],
+    "review-regression.js:exit": 0
+  },
+  "original_ux_regression": {
+    "ux_integration": "passed",
+    "groups": 12,
+    "checks": [
+      "six real accounts resolve capabilities from database",
+      "hidden actions remain forbidden and refresh token is not an access token",
+      "disable and role changes invalidate old sessions immediately",
+      "ordinary profile edits preserve the active session",
+      "empty activity deletion and ownership; concurrent submission is idempotent",
+      "rejected corrections; void changes draft totals only until next publication; audited restore",
+      "adjustment restore distinguishes normal hours; unknown-date source histories stay distinct",
+      "same-file dataset update applies changed defaults without being mistaken for a replay",
+      "dataset replacement retains history; receipt owns user and revision; retries do not duplicate",
+      "account soft deletion preserves attribution and safe restore",
+      "concurrent manager deletion leaves a usable manager",
+      "offline optional cache settles within a bounded timeout"
+    ]
+  },
+  "legacy_integrations": {
+    "academic_test": 0,
+    "publication_test": 0
+  },
+  "packaged_application": {
+    "npm_test_exit": 0,
+    "compose_001_startup": {
+      "health": 200,
+      "protected_users": 401
+    },
+    "repeat_startup": {
+      "health": 200,
+      "protected_users": 401
+    },
+    "packaged_schema": {
+      "public_counters": 2,
+      "publication_state": 1,
+      "user_roles": 6
+    }
+  }
+}

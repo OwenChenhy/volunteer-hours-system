@@ -7,7 +7,11 @@ const ExcelJS = require('exceljs');
 const db = require('../src/db');
 const { hasCapability, hasFullAccess } = require('../src/middlewares/rbac');
 
-db.query = async (sql) => {
+db.query = async (sql, params) => {
+  if (/FROM users WHERE id=\$1/.test(sql) && params?.[0] === '00000000-0000-0000-0000-000000000000') {
+    return {rows:[{id:params[0],username:'regression-admin',real_name:'回归测试管理员',role:'admin',org_name:null,is_active:true,deleted_at:null,session_version:0}]};
+  }
+
   if (/SELECT 1 AS ok/i.test(sql)) return { rows: [{ ok: 1 }] };
   if (/COUNT\(\*\)::int FROM volunteer_logs/i.test(sql)) {
     return { rows: [{ volunteer_logs: 0, import_batches: 0, users: 1 }] };
@@ -16,7 +20,7 @@ db.query = async (sql) => {
 };
 
 const { parsePreview } = require('../src/services/importService');
-const { queryStudentLogs } = require('../src/services/queryService');
+const { queryDraftStudentLogs } = require('../src/services/queryService');
 const { buildApp } = require('../src/app');
 const { extractActivities, extractActivityDetails } = require('../../tools/prepare-march-public-detail-import');
 
@@ -34,7 +38,8 @@ async function buildProductFixture() {
 async function main() {
   assert(hasFullAccess({ role: 'super_admin' }), 'super_admin should have full access');
   assert(hasCapability('data_admin', 'import:manage'), 'data_admin should manage imports');
-  assert(hasCapability('college_admin', 'reviews:manage'), 'college_admin should review scoped records');
+  assert(!hasCapability('college_admin', 'reviews:manage'), 'college_admin submits records; office reviewers manage approval');
+  assert(hasCapability('college_admin', 'activities:write') && hasCapability('college_admin', 'logs:submit'), 'college_admin should submit its activities and participants');
   assert(!hasCapability('auditor', 'reviews:manage'), 'auditor must stay read-only');
 
   const malformedActivities = extractActivities('世预赛活动志愿者（16小时）暑期三下乡活动（56小时、校区迎新志愿服务活动（16小时）、渝超足球联赛志愿活动 （8小时）');
@@ -102,12 +107,11 @@ async function main() {
     }
     return defaultQuery(sql, params);
   };
-  const publicQuery = await queryStudentLogs('TEST-STUDENT-P004', '累计项');
+  const draftQuery = await queryDraftStudentLogs('TEST-STUDENT-P004', '累计项');
   db.query = defaultQuery;
-  assert.strictEqual(publicQuery.records[0].activity_name, '累计时长记录');
-  assert.strictEqual(publicQuery.records[0].activity_time_label, '累计记录');
-  assert.strictEqual(publicQuery.records[0].is_summary_record, true);
-  assert(!JSON.stringify(publicQuery).includes('源表'), 'public query payload must not expose legacy placeholder wording');
+  assert.strictEqual(draftQuery.records[0].activity_name, '源表累计未拆分时长', 'editable draft lookup must preserve the source activity name');
+  assert.strictEqual(draftQuery.records[0].activity_time_label, '累计记录');
+  assert.strictEqual(draftQuery.records[0].is_summary_record, true);
 
   const sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'volunteer-source-'));
   const sourceFile = 'source-row-fixture.xlsx';

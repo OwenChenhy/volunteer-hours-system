@@ -1,0 +1,11 @@
+services:
+  backend:
+    ulimits:
+      nofile:
+        soft: 16384
+        hard: 32768
+  nginx:
+    ulimits:
+      nofile:
+        soft: 16384
+        hard: 32768

@@ -966,3 +966,29 @@ td input[type="checkbox"] {
     gap: 4px;
   }
 }
+
+.academic-editor { padding: 20px; background: var(--panel, white); border: 1px solid #d8dfdd; border-radius: 12px; margin: 20px 0; }
+.academic-editor label { display: flex; flex-direction: column; gap: 8px; }
+.academic-editor .inline-check { flex-direction: row; align-items: center; }
+.academic-error { color: #b42318; }
+
+.ux-steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;padding:0;margin:0 0 8px;list-style:none}
+.ux-steps li{display:flex;align-items:center;gap:9px;color:#64748b;padding:12px;border-bottom:2px solid #dce3e8;font-size:14px}
+.ux-steps li span{display:grid;place-items:center;width:26px;height:26px;flex-shrink:0;border-radius:50%;background:#e2e8ee;color:#4b5866;font-weight:700}
+.ux-steps li.current{border-color:#236a53;color:#205b48}.ux-steps li.current span{background:#236a53;color:white}
+.ux-flow-footer{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-top:20px;margin-top:16px;border-top:1px solid #e2e8ee}
+.ux-entry-options{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}.ux-entry-options button.selected{border-color:#236a53;background:#e8f3ed;color:#205b48;font-weight:600}
+.ux-context{margin:0;padding:12px 16px;background:#e8f3ed;border-left:3px solid #236a53;border-radius:4px;color:#205b48}
+.ux-advanced,.ux-history{grid-column:1/-1;padding:14px 16px;border:1px solid #dce3e8;border-radius:6px;background:#f8fafb}.ux-advanced summary,.ux-history summary{cursor:pointer;color:#334155;font-weight:600;min-height:24px}
+.ux-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.ux-detail-grid p{display:flex;flex-direction:column;gap:6px;margin:0}.ux-detail-grid strong{font-size:13px;color:#667687}
+.ux-progress-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0}.ux-progress-grid .metric-card{min-width:0}
+.ux-summary{display:flex;gap:20px;flex-wrap:wrap;align-items:center;padding:16px;background:#edf5f1;color:#205b48;border-radius:6px;margin:16px 0}
+.ux-muted{display:block;font-size:12px;color:#64748b;margin-top:4px}.ux-state{display:block;font-weight:600}.ux-state small{display:block;font-size:12px;font-weight:400;margin-top:4px;color:#64748b;max-width:250px}.state-pending{color:#8c5b0b}.state-approved{color:#205b48}.state-rejected,.state-voided{color:#9b3232}.state-withdrawn{color:#64748b}
+.ux-participant-list{display:grid;gap:14px;margin:12px 0}.ux-participant-row{padding:16px;border:1px solid #dce3e8;border-radius:6px;background:#fafcfd}.ux-participant-index{display:flex;justify-content:space-between;align-items:center;font-weight:600;margin-bottom:12px}.ux-participant-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.ux-participant-fields .field{margin:0}.ux-row-check{width:18px;min-height:18px;display:inline;margin-right:8px;vertical-align:middle}
+.danger-text{color:#a63434!important;border-color:#ecc9c9!important}.danger-button{color:white!important;background:#a63434!important;border-color:#a63434!important}.danger-button:hover:not(:disabled){background:#882b2b!important}
+.ux-dialog-backdrop{position:fixed;inset:0;z-index:1000;background:rgba(15,23,42,.42);display:grid;place-items:center;padding:20px}.ux-dialog{width:min(100%,480px);max-height:90dvh;overflow:auto;padding:24px;background:white;border-radius:10px;box-shadow:0 12px 48px rgba(0,0,0,.18)}.ux-dialog h2{margin-top:0;font-size:21px}.ux-dialog p{line-height:1.7}.ux-dialog .form-actions{justify-content:flex-end}
+.content{min-width:0}.panel-body,.table-wrap{min-width:0;max-width:100%}.toolbar .field{min-width:180px;flex:1}.toolbar input[type=checkbox]{width:18px;min-height:18px}.inline-check input[type=checkbox]{width:18px;min-height:18px;flex-shrink:0}.row-actions{flex-wrap:wrap}button:focus-visible{outline:3px solid #236a53;outline-offset:3px}.ux-history .table-wrap{margin-top:16px}
+@media(max-width:760px){.ux-steps{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.ux-steps li{padding:9px 4px;font-size:12px;gap:6px}.ux-participant-fields,.ux-detail-grid{grid-template-columns:1fr}.ux-progress-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ux-flow-footer button{flex:1;min-height:44px}.ux-summary{gap:12px;font-size:14px}.ux-dialog{padding:20px}.ux-participant-row{padding:12px}.toolbar .field{min-width:100%;}.row-actions button,.ux-entry-options button{min-height:44px}.ux-dialog .form-actions button{min-height:44px}}
+
+.mobile-menu-toggle{display:none;margin-left:auto}.status-pill{max-width:100%}.status-pill span{overflow-wrap:anywhere}.field>label{font-size:13px;font-weight:600;color:#405366}
+@media(max-width:760px){.mobile-menu-toggle{display:inline-flex;min-height:44px}.sidebar:not(.menu-open) .nav-list,.sidebar:not(.menu-open) .logout-button{display:none}.sidebar .brand{margin-bottom:0}.sidebar.menu-open .brand{margin-bottom:16px}.content button{min-height:44px}}

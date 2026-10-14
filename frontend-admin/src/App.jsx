@@ -1,4 +1,13 @@
+import { Menu } from 'lucide-react';
+import ActivityWorkspace from './ActivityWorkspace';
+import UserManagementPage from './UserManagementPage';
+import RecordsPage from './RecordsPage';
+import ImportWizard from './ImportWizard';
+import { SessionContext, useSession } from './SessionContext';
 import { useEffect, useMemo, useState } from "react";
+import AcademicSummaryPage from "./AcademicSummaryPage";
+import StudentLookupPage from "./StudentLookupPage";
+import PublicationPage from "./PublicationPage";
 import {
   Activity,
   AlertTriangle,
@@ -23,6 +32,8 @@ import {
   Users,
 } from "lucide-react";
 import {
+  getMe,
+  logout,
   approveLog,
   archiveActivity,
   batchApprove,
@@ -59,20 +70,25 @@ import {
 } from "./api";
 
 const modules = [
-  { id: "overview", label: "概览", icon: Home },
-  { id: "activities", label: "活动", icon: Activity },
-  { id: "lookup", label: "学生查询", icon: Search },
-  { id: "submit", label: "填报", icon: ClipboardList },
-  { id: "review", label: "审核", icon: CheckSquare },
-  { id: "problems", label: "问题复核", icon: AlertTriangle },
-  { id: "import", label: "导入", icon: UploadCloud },
-  { id: "stats", label: "统计", icon: BarChart3 },
-  { id: "ops", label: "运维状态", icon: Database },
-  { id: "users", label: "用户", icon: Users },
-  { id: "audit", label: "日志", icon: FileText },
+  { id:'overview',label:'工作台',icon:Home },
+  { id:'activities',label:'活动管理',icon:Activity,capability:'activities:write' },
+  { id:'submit',label:'填报名单',icon:ClipboardList,capability:'logs:submit' },
+  { id:'progress',label:'提交进度',icon:CheckSquare,capability:'logs:submit' },
+  { id:'lookup',label:'学生查询',icon:Search,capability:'stats:read' },
+  { id:'academic',label:'学年汇总',icon:BarChart3,capability:'stats:read' },
+  { id:'review',label:'审核管理',icon:CheckSquare,capability:'logs:review' },
+  { id:'publication',label:'统一发布',icon:UploadCloud,capability:'publication:manage' },
+  { id:'problems',label:'问题复核',icon:AlertTriangle,capability:'reviews:read' },
+  { id:'import',label:'时长库导入',icon:UploadCloud,capability:'import:manage' },
+  { id:'stats',label:'统计报表',icon:BarChart3,capability:'stats:read',allScope:true },
+  { id:'ops',label:'运维状态',icon:Database,capability:'ops:read' },
+  { id:'users',label:'账号管理',icon:Users,capability:'*' },
+  { id:'audit',label:'操作日志',icon:FileText,capability:'audit:read' },
 ];
 
 const emptyActivity = {
+  academic_year: "",
+  academic_term: "",
   name: "",
   start_time: "",
   end_time: "",
@@ -109,89 +125,105 @@ const problemTypeLabels = {
   phone_too_long: "联系方式超长",
 };
 
+
 function App() {
-  const [token, setToken] = useState(() => localStorage.getItem("adminToken"));
-  const [activeModule, setActiveModule] = useState("overview");
-
-  useEffect(() => {
-    const expire = () => setToken(null);
-    window.addEventListener('admin-session-expired', expire);
-    return () => window.removeEventListener('admin-session-expired', expire);
-  }, []);
-
-  if (!token) {
-    return <LoginPage onLogin={setToken} />;
+  const [token, setToken] = useState(() => localStorage.getItem('adminToken'));
+  const [user, setUser] = useState(null),
+    [sessionError, setSessionError] = useState(''),
+    [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [activeModule, setActiveModule] = useState(() => new URLSearchParams(window.location.search).get('page') || 'overview');
+  const can = capability => !!user && (!capability || user.capabilities?.includes('*') || user.capabilities?.includes(capability));
+  const available = modules.filter(item => can(item.capability) && (!item.allScope || user?.scope?.type === 'all'));
+  async function refresh() {
+    if (!token) return;
+    try {
+      const data = await getMe();
+      if (localStorage.getItem('adminToken') === token) {
+        setUser(data.user);
+        setSessionError('');
+      }
+    } catch (error) {
+      if (localStorage.getItem('adminToken') === token) setSessionError(error.message);
+    }
   }
-
-  const ActiveIcon = modules.find((item) => item.id === activeModule)?.icon || Home;
-
-  return (
-    <div className="admin-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <ClipboardList size={28} />
-          <div>
-            <strong>志愿时长</strong>
-            <span>管理后台</span>
-          </div>
-        </div>
-
-        <nav className="nav-list" aria-label="管理后台导航">
-          {modules.map((item) => {
+  useEffect(() => {
+    const expired = () => {
+      setToken(null);
+      setUser(null);
+      setSessionError('');
+    };
+    window.addEventListener('admin-session-expired', expired);
+    return () => window.removeEventListener('admin-session-expired', expired);
+  }, []);
+  useEffect(() => {
+    setUser(null);
+    if (!token) return;
+    refresh();
+    const timer = setInterval(refresh, 60000);
+    const focus = () => refresh();
+    window.addEventListener('focus', focus);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', focus);
+    };
+  }, [token]);
+  useEffect(() => {
+    if (user && !available.some(item => item.id === activeModule)) {
+      setActiveModule('overview');
+      const url = new URL(window.location.href);
+      url.searchParams.set('page', 'overview');
+      window.history.replaceState(null, '', url);
+    }
+  }, [user, activeModule]);
+  function go(page) {
+    if (!available.some(item => item.id === page)) return;
+    if (!window.dispatchEvent(new CustomEvent('admin-before-navigate', {
+      cancelable: true
+    }))) return;
+    setActiveModule(page);
+    setMobileNavOpen(false);
+    const url = new URL(window.location.href);
+    url.searchParams.set('page', page);
+    window.history.replaceState(null, '', url);
+  }
+  async function signOut() {
+    if (!window.dispatchEvent(new CustomEvent('admin-before-navigate', {
+      cancelable: true
+    }))) return;
+    try {
+      await logout();
+    } catch {}
+    localStorage.removeItem('adminToken');
+    setToken(null);
+    setUser(null);
+    setActiveModule('overview');
+  }
+  if (!token) return <LoginPage onLogin={setToken} />;
+  if (!user) return <main className="login-page"><section className="login-panel"><h2>正在加载工作台</h2><p role={sessionError ? 'alert' : 'status'}>{sessionError || '正在核对账号权限…'}</p>{sessionError && <button onClick={refresh}>重新加载</button>}<button onClick={signOut}>退出登录</button></section></main>;
+  const current = available.find(item => item.id === activeModule) || available[0];
+  return <SessionContext.Provider value={{
+    user,
+    can,
+    refresh
+  }}><div className="admin-shell"><aside className={mobileNavOpen ? "sidebar menu-open" : "sidebar"}><div className="brand"><ClipboardList size={28} /><div><strong>志愿时长</strong><span>管理工作台</span></div><button className="mobile-menu-toggle" aria-expanded={mobileNavOpen} aria-controls="admin-navigation" onClick={() => setMobileNavOpen(!mobileNavOpen)}><Menu size={18} />{mobileNavOpen ? "收起菜单" : "功能菜单"}</button></div><nav id="admin-navigation" className="nav-list" aria-label="管理后台导航">{available.map(item => {
             const Icon = item.icon;
-            return (
-              <button
-                key={item.id}
-                className={activeModule === item.id ? "nav-item active" : "nav-item"}
-                type="button"
-                onClick={() => setActiveModule(item.id)}
-              >
-                <Icon size={18} />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-
-        <button
-          className="logout-button"
-          type="button"
-          onClick={() => {
-            localStorage.removeItem("adminToken");
-            setToken(null);
-          }}
-        >
-          <LogOut size={18} />
-          <span>退出登录</span>
-        </button>
-      </aside>
-
-      <main className="content">
-        <header className="topbar">
-          <div>
-            <p>志愿时长管理系统</p>
-            <h1>{modules.find((item) => item.id === activeModule)?.label}</h1>
-          </div>
-          <div className="status-pill">
-            <ActiveIcon size={16} />
-            <span>API 已连接</span>
-          </div>
-        </header>
-
-        {activeModule === "overview" && <OverviewPage go={setActiveModule} />}
-        {activeModule === "activities" && <ActivitiesPage />}
-        {activeModule === "lookup" && <StudentLookupPage />}
-        {activeModule === "submit" && <SubmitPage />}
-        {activeModule === "review" && <ReviewPage />}
-        {activeModule === "problems" && <ProblemReviewPage go={setActiveModule} />}
-        {activeModule === "import" && <ImportPage />}
-        {activeModule === "stats" && <StatsPage go={setActiveModule} />}
-        {activeModule === "ops" && <OpsStatusPage />}
-        {activeModule === "users" && <UsersPage />}
-        {activeModule === "audit" && <AuditPage />}
-      </main>
-    </div>
-  );
+            return <button key={item.id} className={current.id === item.id ? 'nav-item active' : 'nav-item'} type="button" onClick={() => go(item.id)}><Icon size={18} /><span>{item.label}</span></button>;
+          })}</nav><button className="logout-button" onClick={signOut}><LogOut size={18} />退出登录</button></aside><main className="content"><header className="topbar"><div><p>志愿时长管理系统</p><h1>{current.label}</h1></div><div className="status-pill"><span>{user.real_name || user.username} · {roleLabel(user.role)}</span></div></header>
+    {current.id === 'overview' && <OverviewPage go={go} />}
+    {current.id === 'activities' && <ActivityWorkspace />}
+    {current.id === 'submit' && <ActivityWorkspace startWithSubmission />}
+    {current.id === 'progress' && <RecordsPage />}
+    {current.id === 'lookup' && <StudentLookupPage />}
+    {current.id === 'academic' && <AcademicSummaryPage />}
+    {current.id === 'review' && <RecordsPage review />}
+    {current.id === 'publication' && <PublicationPage />}
+    {current.id === 'problems' && (can('reviews:manage') ? <ProblemReviewPage go={go} /> : <ProblemReadOnlyPage />)}
+    {current.id === 'import' && <ImportWizard />}
+    {current.id === 'stats' && <StatsPage go={go} />}
+    {current.id === 'ops' && <OpsStatusPage />}
+    {current.id === 'users' && <UserManagementPage />}
+    {current.id === 'audit' && <AuditPage />}
+  </main></div></SessionContext.Provider>;
 }
 
 function LoginPage({ onLogin }) {
@@ -258,382 +290,56 @@ function LoginPage({ onLogin }) {
   );
 }
 
-function OverviewPage({ go }) {
-  const [overview, setOverview] = useState({});
-  const [pending, setPending] = useState([]);
-  const [legacy, setLegacy] = useState([]);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
 
+function OverviewPage({
+  go
+}) {
+  const {
+    user,
+    can
+  } = useSession();
+  const [overview, setOverview] = useState({}),
+    [error, setError] = useState(''),
+    [loading, setLoading] = useState(true);
+  const fullStats = can('stats:read') && user.scope?.type === 'all';
   async function load() {
     setLoading(true);
-    setError("");
+    setError('');
     try {
-      const [overviewData, pendingRows, legacyRows] = await Promise.all([
-        getOverview(),
-        listLogs({ status: "pending", limit: 5 }),
-        listLogs({ legacy_unprocessed: "true", limit: 5 }),
-      ]);
-      setOverview(overviewData || {});
-      setPending(pendingRows || []);
-      setLegacy(legacyRows || []);
-    } catch (err) {
-      setError(err.message);
+      if (fullStats) setOverview(await getOverview());else if (can('logs:submit')) {
+        const [activities, records] = await Promise.all([listActivities(), listLogs({
+          limit: 1000
+        })]);
+        setOverview({
+          activity_count: activities.length,
+          pending_count: records.filter(row => row.status === 'pending').length,
+          approved_count: records.filter(row => row.status === 'approved').length,
+          rejected_count: records.filter(row => row.status === 'rejected').length
+        });
+      }
+    } catch (error) {
+      setError(error.message);
     } finally {
       setLoading(false);
     }
   }
-
   useEffect(() => {
     load();
-  }, []);
-
-  const cards = [
-    { label: "总学生数", value: overview.total_students ?? 0 },
-    { label: "累计时长", value: formatHours(overview.total_hours) },
-    { label: "待审核", value: overview.pending_count ?? 0 },
-    { label: "未处理导入", value: overview.legacy_todo_count ?? 0 },
-    { label: "已通过", value: overview.approved_count ?? 0 },
-    { label: "活动数", value: overview.activity_count ?? 0 },
-  ];
-
-  return (
-    <section className="dashboard-section">
-      <SectionTitle title="运行概览" subtitle={loading ? "正在加载" : "实时读取后台数据"} onRefresh={load} />
-      <Notice type="error" message={error} />
-      <div className="metric-grid">
-        {cards.map((card) => (
-          <article className="metric-card" key={card.label}>
-            <span>{card.label}</span>
-            <strong>{card.value}</strong>
-          </article>
-        ))}
-      </div>
-      <Panel title="重点工作入口">
-        <div className="quick-grid">
-          <button className="quick-action" type="button" onClick={() => go("problems")}>
-            <AlertTriangle size={18} />
-            <span>问题数据复核</span>
-          </button>
-          <button className="quick-action" type="button" onClick={() => go("import")}>
-            <UploadCloud size={18} />
-            <span>导入预览确认</span>
-          </button>
-          <button className="quick-action" type="button" onClick={() => go("stats")}>
-            <TrendingUp size={18} />
-            <span>增强统计报表</span>
-          </button>
-          <button className="quick-action" type="button" onClick={() => go("ops")}>
-            <ShieldCheck size={18} />
-            <span>备份监控状态</span>
-          </button>
-        </div>
-      </Panel>
-      <div className="two-column">
-        <Panel title="待审核记录" action={<button onClick={() => go("review")}>进入审核</button>}>
-          <CompactLogList rows={pending} />
-        </Panel>
-        <Panel title="未处理导入" action={<button onClick={() => go("problems")}>进入复核</button>}>
-          <CompactLogList rows={legacy} />
-        </Panel>
-      </div>
-    </section>
-  );
+  }, [user.id]);
+  const actions = [['activities', '活动与名单', 'activities:write', Activity], ['progress', '查看提交进度', 'logs:submit', ClipboardList], ['review', '处理待审核名单', 'logs:review', CheckSquare], ['import', '导入或更新时长库', 'import:manage', UploadCloud], ['academic', '查询学年汇总', 'stats:read', BarChart3], ['ops', '查看运维状态', 'ops:read', ShieldCheck], ['users', '管理用户账号', '*', Users]].filter(([,, capability]) => can(capability));
+  const cards = fullStats ? [['总学生数', overview.total_students || 0], ['审核库累计时长', formatHours(overview.total_hours)], ['待审核', overview.pending_count || 0], ['活动数', overview.activity_count || 0]] : can('logs:submit') ? [['负责活动', overview.activity_count || 0], ['待审核', overview.pending_count || 0], ['已通过', overview.approved_count || 0], ['需修正', overview.rejected_count || 0]] : [];
+  return <section className="dashboard-section"><SectionTitle title={`${user.real_name || user.username}的工作台`} subtitle={loading ? '正在加载' : `${roleLabel(user.role)}${user.org_name ? ' · ' + user.org_name : ''}`} onRefresh={load} /><Notice type="error" message={error} />{cards.length > 0 && <div className="metric-grid">{cards.map(([label, value]) => <article className="metric-card" key={label}><span>{label}</span><strong>{value}</strong></article>)}</div>}<Panel title="开始工作"><div className="quick-grid">{actions.map(([page, label,, Icon]) => <button className="quick-action" key={page} onClick={() => go(page)}><Icon size={18} /><span>{label}</span></button>)}</div></Panel><Panel title="操作流程"><p>活动信息 → 参与名单 → 校验预览 → 提交审核 → 通过待发布 → 统一发布生效</p><p>从活动详情查看名单进度，驳回后修正重提；办公室时长库导入与活动名单上传分别使用对应入口。</p></Panel></section>;
 }
 
-function ActivitiesPage() {
-  const [activities, setActivities] = useState([]);
-  const [form, setForm] = useState(emptyActivity);
-  const [editingId, setEditingId] = useState("");
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-
-  async function load() {
-    setError("");
-    try {
-      setActivities(await listActivities());
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
+function ProblemReadOnlyPage() {
+  const [rows, setRows] = useState([]),
+    [error, setError] = useState('');
   useEffect(() => {
-    load();
+    listProblemLogs({
+      limit: 200
+    }).then(setRows).catch(error => setError(error.message));
   }, []);
-
-  async function save(event) {
-    event.preventDefault();
-    setMessage("");
-    setError("");
-    try {
-      const payload = activityPayload(form);
-      if (editingId) {
-        await updateActivity(editingId, payload);
-        setMessage("活动已更新");
-      } else {
-        await createActivity(payload);
-        setMessage("活动已创建");
-      }
-      setForm(emptyActivity);
-      setEditingId("");
-      await load();
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  function edit(activity) {
-    setEditingId(activity.id);
-    setForm({
-      name: activity.name || "",
-      start_time: toLocalInput(activity.start_time),
-      end_time: toLocalInput(activity.end_time),
-      location: activity.location || "",
-      org_name: activity.org_name || "",
-      description: activity.description || "",
-    });
-  }
-
-  async function toggleArchive(activity) {
-    setError("");
-    try {
-      if (activity.status === "archived") {
-        await unarchiveActivity(activity.id);
-      } else {
-        await archiveActivity(activity.id);
-      }
-      await load();
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  return (
-    <section className="dashboard-section">
-      <SectionTitle title="活动管理" subtitle="创建、编辑和归档活动" onRefresh={load} />
-      <Notice type="success" message={message} />
-      <Notice type="error" message={error} />
-
-      <Panel title={editingId ? "编辑活动" : "创建活动"}>
-        <form className="form-grid" onSubmit={save}>
-          <Field label="活动名称"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></Field>
-          <Field label="开始时间"><input type="datetime-local" value={form.start_time} onChange={(e) => setForm({ ...form, start_time: e.target.value })} required /></Field>
-          <Field label="结束时间"><input type="datetime-local" value={form.end_time} onChange={(e) => setForm({ ...form, end_time: e.target.value })} required /></Field>
-          <Field label="地点"><input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} /></Field>
-          <Field label="负责单位"><input value={form.org_name} onChange={(e) => setForm({ ...form, org_name: e.target.value })} /></Field>
-          <Field label="描述"><input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
-          <div className="form-actions">
-            <button className="primary-button" type="submit"><Save size={16} />保存</button>
-            {editingId && <button type="button" onClick={() => { setEditingId(""); setForm(emptyActivity); }}>取消编辑</button>}
-          </div>
-        </form>
-      </Panel>
-
-      <Panel title="活动列表">
-        <DataTable
-          columns={["名称", "时间", "地点", "单位", "状态", "操作"]}
-          rows={activities.map((activity) => [
-            activity.name,
-            `${formatDateTime(activity.start_time)} - ${formatDateTime(activity.end_time)}`,
-            activity.location || "-",
-            activity.org_name || "-",
-            <Badge key="status" tone={activity.status === "archived" ? "muted" : "green"}>{activity.status === "archived" ? "已归档" : "进行中"}</Badge>,
-            <div className="row-actions" key="actions">
-              <button onClick={() => edit(activity)}>编辑</button>
-              <button onClick={() => toggleArchive(activity)}>{activity.status === "archived" ? "恢复" : "归档"}</button>
-            </div>,
-          ])}
-        />
-      </Panel>
-    </section>
-  );
-}
-
-function SubmitPage() {
-  const [activities, setActivities] = useState([]);
-  const [activityId, setActivityId] = useState("");
-  const [pasteText, setPasteText] = useState("");
-  const [preview, setPreview] = useState([]);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    listActivities().then((rows) => {
-      const active = rows.filter((item) => item.status !== "archived");
-      setActivities(active);
-      setActivityId(active[0]?.id || "");
-    }).catch((err) => setError(err.message));
-  }, []);
-
-  function parse() {
-    const rows = pasteText
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const parts = line.split(/\t|,|，/).map((part) => part.trim());
-        return {
-          student_id: parts[0] || "",
-          student_name: parts[1] || "",
-          college: parts[2] || "",
-          grade: parts[3] || "",
-          hours: Number(parts[4] || 0),
-          phone: parts[5] || "",
-        };
-      });
-    setPreview(rows);
-  }
-
-  async function submit(event) {
-    event.preventDefault();
-    setMessage("");
-    setError("");
-    const records = preview.length ? preview : [];
-    if (!activityId) return setError("请选择活动");
-    if (!records.length) return setError("请先解析粘贴数据");
-    if (records.some((row) => !row.student_id || !row.student_name || !row.hours || row.hours <= 0)) {
-      return setError("存在缺学号、姓名或有效时长的记录");
-    }
-    try {
-      await submitLogs({ activity_id: activityId, records });
-      setMessage(`已提交 ${records.length} 条记录，等待审核`);
-      setPasteText("");
-      setPreview([]);
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  return (
-    <section className="dashboard-section">
-      <SectionTitle title="时长填报" subtitle="支持从 Excel 复制粘贴，列顺序：学号、姓名、学院、年级、时长、联系方式" />
-      <Notice type="success" message={message} />
-      <Notice type="error" message={error} />
-      <Panel title="批量提交">
-        <form className="stack-form" onSubmit={submit}>
-          <Field label="关联活动">
-            <select value={activityId} onChange={(e) => setActivityId(e.target.value)} required>
-              {activities.map((activity) => <option key={activity.id} value={activity.id}>{activity.name}</option>)}
-            </select>
-          </Field>
-          <Field label="粘贴表格">
-            <textarea
-              rows={8}
-              value={pasteText}
-              onChange={(e) => setPasteText(e.target.value)}
-              placeholder={"TEST-STUDENT-003\t测试用户\t计算机科学与工程学院\t25级\t2.5\tTEST-PHONE"}
-            />
-          </Field>
-          <div className="form-actions">
-            <button type="button" onClick={parse}>解析预览</button>
-            <button className="primary-button" type="submit"><Plus size={16} />提交填报</button>
-          </div>
-        </form>
-      </Panel>
-      <Panel title={`预览 ${preview.length} 条`}>
-        <DataTable
-          columns={["学号", "姓名", "学院", "年级", "时长", "联系方式"]}
-          rows={preview.map((row) => [row.student_id, row.student_name, row.college, row.grade, formatHours(row.hours), row.phone])}
-        />
-      </Panel>
-    </section>
-  );
-}
-
-function ReviewPage() {
-  const [filters, setFilters] = useState({ status: "pending", source: "", legacy_unprocessed: "" });
-  const [logs, setLogs] = useState([]);
-  const [selected, setSelected] = useState([]);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-
-  async function load() {
-    setError("");
-    try {
-      setLogs(await listLogs({ ...filters, limit: 500 }));
-      setSelected([]);
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  async function run(action, success) {
-    setMessage("");
-    setError("");
-    try {
-      await action();
-      setMessage(success);
-      await load();
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  return (
-    <section className="dashboard-section">
-      <SectionTitle title="审核管理" subtitle="审核在线填报，处理导入记录" onRefresh={load} />
-      <Notice type="success" message={message} />
-      <Notice type="error" message={error} />
-      <Panel title="筛选">
-        <div className="toolbar">
-          <select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
-            <option value="">全部状态</option>
-            <option value="pending">待审核</option>
-            <option value="approved">已通过</option>
-            <option value="rejected">已驳回</option>
-          </select>
-          <select value={filters.source} onChange={(e) => setFilters({ ...filters, source: e.target.value })}>
-            <option value="">全部来源</option>
-            <option value="online">在线记录</option>
-            <option value="imported">导入记录</option>
-          </select>
-          <label className="inline-check">
-            <input
-              type="checkbox"
-              checked={filters.legacy_unprocessed === "true"}
-              onChange={(e) => setFilters({ ...filters, legacy_unprocessed: e.target.checked ? "true" : "" })}
-            />
-            只看未处理导入
-          </label>
-          <button onClick={load}>查询</button>
-          <button disabled={!selected.length} onClick={() => run(() => batchApprove(selected), `已批量通过 ${selected.length} 条`)}>
-            批量通过
-          </button>
-        </div>
-      </Panel>
-      <Panel title={`记录列表 ${logs.length} 条`}>
-        <DataTable
-          columns={["选择", "学生", "活动", "日期", "时长", "来源", "状态", "操作"]}
-          rows={logs.map((log) => [
-            <input
-              key="check"
-              type="checkbox"
-              checked={selected.includes(log.id)}
-              onChange={(e) => setSelected(e.target.checked ? [...selected, log.id] : selected.filter((id) => id !== log.id))}
-            />,
-            `${log.student_name} / ${log.student_id}`,
-            log.activity_name,
-            formatDate(log.activity_date),
-            formatHours(log.hours),
-            <Badge key="source" tone={log.source === "imported" ? "orange" : "green"}>{log.source === "imported" ? "导入" : "在线"}</Badge>,
-            <StatusBadge key="status" status={log.status} />,
-            <div className="row-actions" key="actions">
-              {log.status === "pending" && <button onClick={() => run(() => approveLog(log.id), "已通过")}>通过</button>}
-              {log.status === "pending" && <button onClick={() => {
-                const reason = window.prompt("请输入驳回原因", "信息有误，请重新核实");
-                if (reason) run(() => rejectLog(log.id, reason), "已驳回");
-              }}>驳回</button>}
-              {log.source === "imported" && !log.is_legacy_processed && <button onClick={() => run(() => markProcessed(log.id), "已标记处理")}>标记已处理</button>}
-            </div>,
-          ])}
-        />
-      </Panel>
-    </section>
-  );
+  return <section className="dashboard-section"><SectionTitle title="问题复核记录" subtitle="按当前账号范围查看复核信息" /><Notice type="error" message={error} /><Panel title={`记录 · ${rows.length}条`}><DataTable columns={['学生', '学院', '活动', '时长', '复核状态']} rows={rows.map(row => [`${row.student_name} / ${row.student_id}`, row.college, row.activity_name, formatHours(row.hours), problemTypeLabel(getRowProblemType(row))])} /></Panel></section>;
 }
 
 function ProblemReviewPage({ go }) {
@@ -884,8 +590,8 @@ function ProblemReviewPage({ go }) {
               <Field label="联系方式"><input value={reviewForm.phone} onChange={(e) => setReviewForm({ ...reviewForm, phone: e.target.value })} /></Field>
               <Field label="活动名称"><input value={reviewForm.activity_name} onChange={(e) => setReviewForm({ ...reviewForm, activity_name: e.target.value })} required /></Field>
               <Field label="时间说明"><input value={reviewForm.activity_period} onChange={(e) => setReviewForm({ ...reviewForm, activity_period: e.target.value })} /></Field>
-              <Field label="活动日期"><input type="date" value={reviewForm.activity_date} onChange={(e) => setReviewForm({ ...reviewForm, activity_date: e.target.value })} required /></Field>
-              <Field label="服务时长"><input type="number" step="0.1" min="0.1" value={reviewForm.hours} onChange={(e) => setReviewForm({ ...reviewForm, hours: e.target.value })} required /></Field>
+              <Field label="活动日期"><input type="date" value={reviewForm.activity_date} onChange={(e) => setReviewForm({ ...reviewForm, activity_date: e.target.value })} required={Boolean(sourceReview?.log?.activity_date)} /><small>历史活动日期未提供，可留空。</small></Field>
+              <Field label="服务时长"><input type="number" step="0.1" min="-9999.9" max="9999.9" value={reviewForm.hours} onChange={(e) => setReviewForm({ ...reviewForm, hours: e.target.value })} required /></Field>
               <Field label="源表总时长"><input type="number" step="0.1" min="0.1" value={reviewForm.source_total_hours} onChange={(e) => setReviewForm({ ...reviewForm, source_total_hours: e.target.value })} /></Field>
               <Field label="复核备注"><textarea rows={3} value={reviewForm.note} onChange={(e) => setReviewForm({ ...reviewForm, note: e.target.value })} /></Field>
               <label className="field checkbox-field">
@@ -922,295 +628,6 @@ function ProblemReviewPage({ go }) {
           ])}
         />
       </Panel>
-    </section>
-  );
-}
-
-function ImportPage() {
-  const [file, setFile] = useState(null);
-  const [preview, setPreview] = useState(null);
-  const [confirmedRows, setConfirmedRows] = useState([]);
-  const [problemDefaults, setProblemDefaults] = useState({ default_activity_date: "", default_activity_name: "" });
-  const [note, setNote] = useState("");
-  const [replaceExistingNote, setReplaceExistingNote] = useState(false);
-  const [batches, setBatches] = useState([]);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-
-  const confirmedSet = useMemo(() => new Set(confirmedRows), [confirmedRows]);
-  const normalRows = useMemo(() => preview?.rows?.filter((row) => row.status === "ok") || [], [preview]);
-  const problemRows = useMemo(() => preview?.rows?.filter((row) => row.status === "warning") || [], [preview]);
-  const errorRows = useMemo(() => preview?.rows?.filter((row) => row.status === "error") || [], [preview]);
-  const confirmedProblemRows = useMemo(
-    () => problemRows.filter((row) => confirmedSet.has(previewRowKey(row))),
-    [problemRows, confirmedSet],
-  );
-  const importableCount = normalRows.length + confirmedProblemRows.length;
-  const unconfirmedProblemCount = problemRows.length - confirmedProblemRows.length;
-  const diffReport = useMemo(() => buildPreviewDiffReport(preview), [preview]);
-  const reimportHints = useMemo(
-    () => buildReimportHints(preview, batches, file, note),
-    [preview, batches, file, note],
-  );
-
-  async function loadBatches() {
-    try {
-      setBatches(await listImportBatches());
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  useEffect(() => {
-    loadBatches();
-  }, []);
-
-  async function previewFile(event) {
-    event.preventDefault();
-    setMessage("");
-    setError("");
-    if (!file) return setError("请选择 Excel 文件");
-    try {
-      setPreview(await previewImport(file));
-      setConfirmedRows([]);
-      setReplaceExistingNote(false);
-      setProblemDefaults({ default_activity_date: "", default_activity_name: "" });
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  function toggleProblemRow(row, checked) {
-    setConfirmedRows((current) => {
-      const next = new Set(current);
-      const key = previewRowKey(row);
-      if (checked) {
-        next.add(key);
-      } else {
-        next.delete(key);
-      }
-      return [...next];
-    });
-  }
-
-  function confirmAllProblems() {
-    setConfirmedRows(problemRows.map(previewRowKey));
-  }
-
-  async function confirm() {
-    setMessage("");
-    setError("");
-    if (!preview) return;
-
-    try {
-      for (const row of confirmedProblemRows) {
-        if (rowNeedsDateFallback(row) && !isStrictDate(problemDefaults.default_activity_date)) {
-          throw new Error("已确认的问题行存在缺失或无效日期，请填写有效的默认活动日期");
-        }
-        if (rowNeedsNameFallback(row) && !problemDefaults.default_activity_name.trim()) {
-          throw new Error("已确认的问题行存在空活动名称，请填写默认活动名称");
-        }
-      }
-
-      if (unconfirmedProblemCount > 0) {
-        throw new Error(`还有 ${unconfirmedProblemCount} 条问题行未确认，请确认后再导入`);
-      }
-      if (!preview.preview_id) {
-        throw new Error("预览状态缺失，请重新上传文件预览");
-      }
-      if (importableCount === 0) {
-        throw new Error("没有可导入的记录");
-      }
-
-      const result = await confirmImport({
-        preview_id: preview.preview_id,
-        confirmed_row_keys: confirmedProblemRows.map(previewRowKey),
-        note,
-        default_activity_date: problemDefaults.default_activity_date,
-        default_activity_name: problemDefaults.default_activity_name.trim(),
-        replace_existing_note: replaceExistingNote,
-      });
-      const skippedErrors = errorRows.length;
-      const replaced = result.replaced_record_count
-        ? `，替换历史记录 ${result.replaced_record_count} 条`
-        : "";
-      setMessage(`导入成功：${result.count} 条，确认问题行 ${result.confirmed_problem_count || 0} 条，跳过错误行 ${skippedErrors} 条${replaced}`);
-      setPreview(null);
-      setFile(null);
-      setConfirmedRows([]);
-      await loadBatches();
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  return (
-    <section className="dashboard-section">
-      <SectionTitle title="Excel 导入" subtitle="上传、预览、确认导入历史时长库" onRefresh={loadBatches} />
-      <Notice type="success" message={message} />
-      <Notice type="error" message={error} />
-      <div className="two-column">
-        <Panel title="上传文件" action={<button onClick={() => downloadImportTemplate().catch((err) => setError(err.message))}>下载模板</button>}>
-          <form className="stack-form" onSubmit={previewFile}>
-            <Field label="Excel 文件">
-              <input accept=".xlsx" type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-            </Field>
-            <Field label="批次备注">
-              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="例如：2026年4月时长库" />
-            </Field>
-            <button className="primary-button" type="submit"><UploadCloud size={16} />解析预览</button>
-          </form>
-        </Panel>
-        <Panel title="历史批次">
-          <DataTable columns={["文件", "记录数", "备注", "时间"]} rows={batches.map((batch) => [batch.filename, batch.record_count, batch.note || "-", formatDateTime(batch.created_at)])} />
-        </Panel>
-      </div>
-
-      {preview && (
-        <Panel
-          title={`预览：共 ${preview.total}，正常 ${preview.ok ?? normalRows.length}，待确认 ${preview.warnings}，错误 ${preview.errors}`}
-          action={
-            <div className="row-actions">
-              {problemRows.length > 0 && <button type="button" onClick={confirmAllProblems}>确认全部问题行</button>}
-              {confirmedRows.length > 0 && <button type="button" onClick={() => setConfirmedRows([])}>清空确认</button>}
-              <button className="primary-button" disabled={importableCount === 0} onClick={confirm} type="button">
-                <CheckSquare size={16} />
-                {unconfirmedProblemCount > 0 ? `待确认 ${unconfirmedProblemCount} 条` : `导入 ${importableCount} 条`}
-              </button>
-            </div>
-          }
-        >
-          <ImportDiffReport report={diffReport} reimportHints={reimportHints} />
-          {reimportHints.matchingBatches.length > 0 && (
-            <label className="inline-check danger-check">
-              <input
-                type="checkbox"
-                checked={replaceExistingNote}
-                onChange={(event) => setReplaceExistingNote(event.target.checked)}
-              />
-              删除并替换备注完全一致的历史批次
-            </label>
-          )}
-          {(problemRows.length > 0 || errorRows.length > 0) && (
-            <div className="problem-confirm-panel">
-              <div className="problem-summary">
-                <Metric label="正常记录" value={normalRows.length} />
-                <Metric label="已确认问题行" value={`${confirmedProblemRows.length}/${problemRows.length}`} />
-                <Metric label="不可导入错误" value={errorRows.length} />
-              </div>
-              <div className="form-grid compact">
-                <Field label="缺日期默认值">
-                  <input
-                    type="date"
-                    value={problemDefaults.default_activity_date}
-                    onChange={(event) => setProblemDefaults({ ...problemDefaults, default_activity_date: event.target.value })}
-                  />
-                </Field>
-                <Field label="缺活动默认值">
-                  <input
-                    value={problemDefaults.default_activity_name}
-                    onChange={(event) => setProblemDefaults({ ...problemDefaults, default_activity_name: event.target.value })}
-                    placeholder="例如：历史时长库累计记录"
-                  />
-                </Field>
-              </div>
-            </div>
-          )}
-          <DataTable
-            columns={["确认", "工作表", "行", "学号", "姓名", "学院", "活动", "日期", "时长", "状态"]}
-            rows={preview.rows.map((row) => [
-              row.status === "warning" ? (
-                <input
-                  aria-label={`确认 ${row.sheet || "工作表"} 第 ${row.row} 行问题数据`}
-                  checked={confirmedSet.has(previewRowKey(row))}
-                  key="confirm"
-                  onChange={(event) => toggleProblemRow(row, event.target.checked)}
-                  type="checkbox"
-                />
-              ) : row.status === "error" ? "不可导入" : "自动",
-              row.sheet || "-",
-              row.row,
-              row.student_id,
-              row.student_name,
-              row.college,
-              row.activity_name,
-              row.activity_date,
-              formatHours(row.hours),
-              <IssueCell key="status" row={row} />,
-            ])}
-          />
-        </Panel>
-      )}
-    </section>
-  );
-}
-
-function StudentLookupPage() {
-  const [mode, setMode] = useState('student_id');
-  const [value, setValue] = useState('');
-  const [result, setResult] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  async function submit(event) {
-    event.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      setResult(await searchStudent(mode, value.trim()));
-    } catch (err) {
-      setResult(null);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <section className="dashboard-section">
-      <SectionTitle title="学生时长查询" subtitle="按学号、姓名或校验码查找已审核记录" />
-      <Notice type="error" message={error} />
-      <form className="lookup-form" onSubmit={submit}>
-        <select aria-label="查询方式" value={mode} onChange={(event) => { setMode(event.target.value); setResult(null); }}>
-          <option value="student_id">学号</option>
-          <option value="student_name">姓名</option>
-          <option value="verification_code">校验码</option>
-        </select>
-        <input
-          aria-label="查询内容"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          placeholder={mode === 'verification_code' ? '输入 12 位校验码' : `输入${mode === 'student_id' ? '学号' : '姓名'}`}
-          required
-        />
-        <button className="primary-button" type="submit" disabled={loading}><Search size={16} />{loading ? '查询中' : '查询'}</button>
-      </form>
-      {result && (
-        <div className="lookup-results">
-          <p className="lookup-count">匹配 {result.total_matches} 人{result.truncated ? '，仅展示前 20 人' : ''}</p>
-          {result.matches.length === 0 && <div className="empty-state">没有匹配的已审核记录</div>}
-          {result.matches.map((student) => (
-            <section className="lookup-result" key={`${student.student_id}-${student.student_name}`}>
-              <div className="lookup-result-head">
-                <div>
-                  <h3>{student.student_name} <small>{student.student_id}</small></h3>
-                  <p>{student.college || '学院未填写'} · {student.grade || '年级未填写'} · 校验码 {student.verification_code}</p>
-                </div>
-                <strong>{formatHours(student.total_hours)} 小时</strong>
-              </div>
-              <DataTable
-                columns={['活动名称', '时间说明', '时长', '来源']}
-                rows={(student.records || []).map((record) => [
-                  record.activity_name,
-                  record.activity_time_label || record.activity_period || record.activity_date || '-',
-                  `${formatHours(record.hours)} 小时`,
-                  record.source_label || record.source || '-',
-                ])}
-              />
-            </section>
-          ))}
-        </div>
-      )}
     </section>
   );
 }
@@ -1312,8 +729,9 @@ function StatsPage({ go }) {
         <Panel title="按学院统计">
           <DataTable columns={["学院", "总时长", "记录数"]} rows={college.map((row) => [row.college || "未填写", formatHours(row.total_hours), row.record_count])} />
         </Panel>
-        <Panel title="按月统计">
-          <DataTable columns={["月份", "总时长", "记录数"]} rows={month.map((row) => [row.month, formatHours(row.total_hours), row.record_count])} />
+        <Panel title="月份与历史导入统计">
+          <p>历史活动统一标记为2026年10月之前导入，不推算发生月份。新增活动按填写的真实活动日期分月统计。</p>
+          <DataTable columns={["月份 / 历史范围", "总时长", "记录数"]} rows={month.map((row) => [row.month, formatHours(row.total_hours), row.record_count])} />
         </Panel>
       </div>
     </section>
@@ -1391,98 +809,6 @@ function OpsStatusPage() {
             <Badge key="status" tone={opsTone(item.status)}>{opsLabel(item.status)}</Badge>,
             formatDateTime(item.time),
             item.message || "-",
-          ])}
-        />
-      </Panel>
-    </section>
-  );
-}
-
-function UsersPage() {
-  const [users, setUsers] = useState([]);
-  const [roles, setRoles] = useState(fallbackRoles);
-  const [form, setForm] = useState({ username: "", password: "", real_name: "", role: "organizer", org_name: "" });
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-
-  async function load() {
-    setError("");
-    try {
-      const [userRows, roleRows] = await Promise.all([
-        listUsers(),
-        listRoles().catch(() => fallbackRoles),
-      ]);
-      setUsers(userRows || []);
-      setRoles(normalizeRoles(roleRows));
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  async function create(event) {
-    event.preventDefault();
-    setMessage("");
-    setError("");
-    try {
-      await createUser(form);
-      setMessage("用户已创建");
-      setForm({ username: "", password: "", real_name: "", role: "organizer", org_name: "" });
-      await load();
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  async function reset(user) {
-    const password = window.prompt(`为 ${user.username} 设置新密码`);
-    if (!password) return;
-    try {
-      await resetUserPassword(user.id, password);
-      setMessage("密码已重置");
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  return (
-    <section className="dashboard-section">
-      <SectionTitle title="用户管理" subtitle="创建组织者或管理员，禁用账号和重置密码" onRefresh={load} />
-      <Notice type="success" message={message} />
-      <Notice type="error" message={error} />
-      <Panel title="创建账号">
-        <form className="form-grid" onSubmit={create}>
-          <Field label="用户名"><input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} required /></Field>
-          <Field label="初始密码"><input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required type="password" /></Field>
-          <Field label="真实姓名"><input value={form.real_name} onChange={(e) => setForm({ ...form, real_name: e.target.value })} required /></Field>
-          <Field label="角色">
-            <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-              {roles.map((role) => (
-                <option key={role.value} value={role.value}>{role.label}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="所属组织"><input value={form.org_name} onChange={(e) => setForm({ ...form, org_name: e.target.value })} /></Field>
-          <div className="form-actions"><button className="primary-button" type="submit"><Plus size={16} />创建用户</button></div>
-        </form>
-      </Panel>
-      <Panel title="账号列表">
-        <DataTable
-          columns={["用户名", "姓名", "角色", "组织", "状态", "创建时间", "操作"]}
-          rows={users.map((user) => [
-            user.username,
-            user.real_name,
-            roleLabel(user.role, roles),
-            user.org_name || "-",
-            <Badge key="active" tone={user.is_active ? "green" : "red"}>{user.is_active ? "启用" : "禁用"}</Badge>,
-            formatDateTime(user.created_at),
-            <div className="row-actions" key="actions">
-              <button onClick={() => toggleUser(user.id).then(load).catch((err) => setError(err.message))}>{user.is_active ? "禁用" : "启用"}</button>
-              <button onClick={() => reset(user)}>重置密码</button>
-            </div>,
           ])}
         />
       </Panel>
@@ -1723,8 +1049,8 @@ function CompactLogList({ rows }) {
 function activityPayload(form) {
   return {
     ...form,
-    start_time: new Date(form.start_time).toISOString(),
-    end_time: new Date(form.end_time).toISOString(),
+    start_time: form.start_time ? new Date(form.start_time).toISOString() : null,
+    end_time: form.end_time ? new Date(form.end_time).toISOString() : null,
   };
 }
 

@@ -1,25 +1,24 @@
 const jwt = require('jsonwebtoken');
+const { currentUser } = require('../services/sessionService');
 
 const authenticate = async (request, reply) => {
+  const value = request.headers.authorization;
+  if (!value || !value.startsWith('Bearer ')) return reply.code(401).send({ message: '请先登录' });
+  let decoded;
   try {
-    const authHeader = request.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return reply.code(401).send({ message: '未授权，缺少Token' });
-    }
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    request.user = decoded; // { id, role, etc. }
-  } catch (err) {
-    return reply.code(401).send({ message: 'Token无效或已过期' });
+    decoded = jwt.verify(value.slice(7), process.env.JWT_SECRET);
+    if (decoded.token_type && decoded.token_type !== 'access') throw new Error('wrong token type');
+  } catch {
+    return reply.code(401).send({ message: '登录已失效，请重新登录' });
+  }
+  try {
+    const user = await currentUser(decoded);
+    if (!user) return reply.code(401).send({ message: '账号状态或权限已变更，请重新登录' });
+    request.user = user;
+  } catch (error) {
+    request.log.error({ code: error.code }, 'Account validation unavailable');
+    return reply.code(503).send({ message: '暂时无法校验账号，请稍后重试' });
   }
 };
 
-const requireRole = (role) => {
-  return async (request, reply) => {
-    if (request.user.role !== role && request.user.role !== 'admin') {
-      return reply.code(403).send({ message: '权限不足' });
-    }
-  };
-};
-
-module.exports = { authenticate, requireRole };
+module.exports = { authenticate, requireRole: require('./rbac').requireRole };

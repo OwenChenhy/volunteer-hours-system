@@ -1,0 +1,213 @@
+import { useEffect, useState } from 'react';
+import { confirmImport, downloadImportTemplate, listImportBatches, prepareImport, previewImport } from './api';
+import { Banner, Field, Panel, Steps, Table, hours, useUnsavedChanges } from './UxUI';
+const rowKey = row => `${row.sheet || ''}:${row.row || ''}:${row.student_id || ''}:${row.student_name || ''}`;
+const codes = row => (row.issues || []).map(issue => issue.code);
+const duplicate = row => codes(row).some(code => ['duplicate_in_file', 'duplicate_record'].includes(code));
+const group = row => row.status === 'error' ? 'error' : duplicate(row) ? 'duplicate' : row.status === 'warning' ? 'warning' : 'ok';
+const groupLabels = {
+  all: '全部',
+  ok: '正常',
+  duplicate: '重复',
+  warning: '待确认',
+  error: '错误'
+};
+export default function ImportWizard() {
+  const [step, setStep] = useState(0),
+    [batches, setBatches] = useState([]),
+    [mode, setMode] = useState('new'),
+    [dataset, setDataset] = useState(''),
+    [newKey, setNewKey] = useState(() => `dataset:${crypto.randomUUID()}`),
+    [note, setNote] = useState(''),
+    [file, setFile] = useState(null),
+    [preview, setPreview] = useState(null),
+    [skipped, setSkipped] = useState([]),
+    [confirmed, setConfirmed] = useState([]),
+    [filter, setFilter] = useState('all'),
+    [defaults, setDefaults] = useState({
+      default_activity_name: '',
+      default_activity_date: '',
+      default_academic_year: '',
+      default_academic_term: '',
+      default_grade: ''
+    }),
+    [receipt, setReceipt] = useState(null),
+    [result, setResult] = useState(null),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState('');
+  useUnsavedChanges(!!preview && !result);
+  const datasetMap = new Map();
+  for (const batch of batches.filter(batch => batch.dataset_key && !batch.superseded_at)) {
+    const prior = datasetMap.get(batch.dataset_key);
+    if (prior) prior.record_count += Number(batch.record_count || 0);else datasetMap.set(batch.dataset_key, {
+      ...batch,
+      record_count: Number(batch.record_count || 0)
+    });
+  }
+  const datasets = [...datasetMap.values()];
+  async function load() {
+    try {
+      setBatches(await listImportBatches());
+    } catch (failure) {
+      setError(failure.message);
+    }
+  }
+  useEffect(() => {
+    load();
+  }, []);
+  function invalidate() {
+    setReceipt(null);
+    setError('');
+  }
+  async function parse(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const data = await previewImport(file);
+      setPreview(data);
+      setConfirmed([]);
+      setSkipped(data.rows.filter(row => codes(row).includes('duplicate_in_file') || mode === 'new' && codes(row).includes('duplicate_record')).map(rowKey));
+      setReceipt(null);
+      setResult(null);
+      setStep(2);
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  function choose(row, choice) {
+    invalidate();
+    const key = rowKey(row);
+    setSkipped(current => choice === 'skip' ? [...new Set([...current, key])] : current.filter(value => value !== key));
+    setConfirmed(current => choice === 'confirm' ? [...new Set([...current, key])] : current.filter(value => value !== key));
+  }
+  async function prepare() {
+    setBusy(true);
+    setError('');
+    try {
+      const data = await prepareImport({
+        preview_id: preview.preview_id,
+        dataset_key: mode === 'new' ? newKey : dataset,
+        note: note.trim(),
+        replace_dataset: mode === 'update',
+        skipped_row_keys: skipped,
+        confirmed_row_keys: confirmed,
+        ...defaults
+      });
+      setReceipt(data);
+      setStep(3);
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function execute() {
+    setBusy(true);
+    setError('');
+    try {
+      const data = await confirmImport({
+        preview_id: preview.preview_id,
+        confirmation_id: receipt.confirmation_id
+      });
+      setResult(data);
+      setStep(4);
+      await load();
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  function exportErrors() {
+    const selected = preview.rows.filter(row => row.status !== 'ok');
+    const cell = value => {
+      let text = String(value ?? '');
+      if (/^[=+\-@]/.test(text)) text = "'" + text;
+      return '"' + text.replace(/"/g, '""') + '"';
+    };
+    const text = [['工作表', '行', '学号', '姓名', '学院', '时长', '问题'], ...selected.map(row => [row.sheet, row.row, row.student_id, row.student_name, row.college, row.hours, row.message])].map(row => row.map(cell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob(['\uFEFF' + text], {
+      type: 'text/csv;charset=utf-8'
+    }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = '导入问题清单.csv';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function confirmResolved() {
+    const eligible = preview.rows.filter(row => row.status === 'warning' && !skipped.includes(rowKey(row)) && codes(row).every(code => code === 'cumulative_table' || code === 'duplicate_record' && mode === 'update' || code === 'missing_grade' && defaults.default_grade || code === 'missing_activity_name' && defaults.default_activity_name || code === 'missing_or_invalid_activity_date' && defaults.default_activity_date));
+    setConfirmed(current => [...new Set([...current, ...eligible.map(rowKey)])]);
+    invalidate();
+  }
+  const rows = preview?.rows || [],
+    shown = rows.filter(row => filter === 'all' || group(row) === filter);
+  const unresolved = rows.filter(row => !skipped.includes(rowKey(row)) && (row.status === 'error' || row.status === 'warning' && !confirmed.includes(rowKey(row)))).length;
+  return <section className="dashboard-section"><div><h2>办公室时长库导入</h2><p>活动参与名单请从“活动管理”进入填报；这里用于办公室导入或更新时长库，完成后等待统一发布。</p></div><Banner error={error} /><Steps labels={['选择时长库', '上传文件', '处理问题', '核对变更', '导入结果']} current={step} />
+    {step === 0 && <Panel title="选择导入目标"><form className="stack-form" onSubmit={event => {
+        event.preventDefault();
+        setStep(1);
+        setError('');
+      }}><Field label="本次操作"><select value={mode} onChange={event => {
+            setMode(event.target.value);
+            invalidate();
+          }}><option value="new">首次导入新时长库</option><option value="update">更新已有时长库</option></select></Field>{mode === 'update' && <Field label="选择已有时长库"><select required value={dataset} onChange={event => {
+            setDataset(event.target.value);
+            setNote(datasets.find(batch => batch.dataset_key === event.target.value)?.note || '');
+            invalidate();
+          }}><option value="">请选择</option>{datasets.map(batch => <option key={batch.dataset_key} value={batch.dataset_key}>{batch.note || batch.filename} · {batch.record_count}条</option>)}</select></Field>}<Field label="时长库名称" hint="例如：2026-2027学年计算机学院累计时长库。同一统计范围每月更新时请选择已有库；月份作为更新说明，避免重复累加。"><input required maxLength={256} value={note} onChange={event => {
+            setNote(event.target.value);
+            invalidate();
+          }} /></Field><div className="form-actions"><button className="primary-button" disabled={mode === 'update' && !dataset}>继续上传文件</button></div></form></Panel>}
+    {step === 1 && <Panel title={`上传文件 · ${note}`} action={<button onClick={() => downloadImportTemplate().catch(failure => setError(failure.message))}>下载办公室导入模板</button>}><form className="stack-form" onSubmit={parse}><Field label="选择Excel文件" hint="支持.xlsx、多工作表和混合年级。使用真实活动日期；已有历史记录的未知日期标记保留。"><input type="file" accept=".xlsx" required disabled={busy} onChange={event => {
+            setFile(event.target.files?.[0] || null);
+            setPreview(null);
+            setReceipt(null);
+            setResult(null);
+          }} /></Field><details className="ux-advanced"><summary>批次归属与缺失字段默认值</summary><p>学年和阶段会覆盖本批次的行内归属；活动名称、日期和年级只补充缺失项。请先核对原始表格。</p><div className="form-grid">{Object.entries({
+              default_activity_name: '缺失活动名称默认值',
+              default_activity_date: '缺失活动日期默认值',
+              default_academic_year: '本批次学年',
+              default_grade: '缺失年级默认值'
+            }).map(([key, label]) => <Field key={key} label={label}><input type={key === 'default_activity_date' ? 'date' : 'text'} value={defaults[key]} onChange={event => {
+                setDefaults({
+                  ...defaults,
+                  [key]: event.target.value
+                });
+                invalidate();
+              }} /></Field>)}<Field label="本批次阶段"><select value={defaults.default_academic_term} onChange={event => {
+                setDefaults({
+                  ...defaults,
+                  default_academic_term: event.target.value
+                });
+                invalidate();
+              }}><option value="">沿用行内归属或按日期分类</option><option value="upper">上半年</option><option value="lower">下半年</option><option value="vacation">寒暑假补录</option><option value="unassigned">未分期累计</option></select></Field></div></details><div className="ux-flow-footer"><button type="button" disabled={busy} onClick={() => setStep(0)}>返回选择目标</button><button className="primary-button" disabled={busy || !file}>{busy ? '正在解析…' : '解析文件并检查问题'}</button></div></form></Panel>}
+    {step === 2 && preview && <Panel title={`检查问题 · ${preview.filename}`}><p>{rows.length}行 · {skipped.length}行已选跳过 · {unresolved}行仍需处理。确认行将应用当前默认值。</p><div className="ux-entry-options">{Object.entries(groupLabels).map(([key, label]) => <button key={key} className={filter === key ? 'selected' : ''} onClick={() => setFilter(key)}>{label} {key === 'all' ? rows.length : rows.filter(row => group(row) === key).length}</button>)}</div><div className="toolbar"><button onClick={exportErrors}>下载问题清单</button><button onClick={confirmResolved}>确认累计库更新与默认值已解决的行</button><button onClick={() => {
+          setSkipped(current => [...new Set([...current, ...rows.filter(row => row.status === 'error').map(rowKey)])]);
+          invalidate();
+        }}>跳过全部错误行</button></div>
+      <Table columns={['位置', '学生', '学院 / 年级', '活动 / 日期', '时长', '问题', '处理']} rows={shown.map(row => [`${row.sheet} · 第${row.row}行`, `${row.student_name} / ${row.student_id}`, `${row.college || '未填写'} / ${row.grade || defaults.default_grade || '未填写'}`, `${row.activity_name || defaults.default_activity_name || '未填写'} / ${row.activity_date || defaults.default_activity_date || '未填写'}`, hours(row.hours), row.message || '校验正常', <select aria-label={`处理${row.sheet}第${row.row}行`} value={skipped.includes(rowKey(row)) ? 'skip' : confirmed.includes(rowKey(row)) ? 'confirm' : row.status === 'ok' ? 'auto' : 'pending'} onChange={event => choose(row, event.target.value)}><option value={row.status === 'ok' ? 'auto' : 'pending'}>{row.status === 'ok' ? '自动导入' : '待处理'}</option>{row.status === 'warning' && <option value="confirm">确认该行</option>}<option value="skip">跳过该行</option></select>])} />
+      <div className="ux-flow-footer"><button disabled={busy} onClick={() => {
+          setStep(1);
+          invalidate();
+        }}>返回修正文件或默认值</button><button className="primary-button" disabled={busy || unresolved > 0} onClick={prepare}>{busy ? '正在核对…' : '查看变更摘要'}</button></div>{unresolved > 0 && <p>请确认或跳过待处理行；错误行需要修正文件或明确选择跳过。</p>}</Panel>}
+    {step === 3 && receipt && <Panel title={mode === 'update' ? '核对已有时长库更新' : '核对首次导入'}><p><strong>{receipt.note}</strong> · {receipt.filename}</p><div className="ux-progress-grid">{[[receipt.new_count, '预计导入'], [receipt.replaced_count, '替换旧记录'], [receipt.skipped_count, '跳过'], [receipt.student_count, '涉及学生']].map(([value, label]) => <article className="metric-card" key={label}><span>{label}</span><strong>{value}</strong></article>)}</div><div className="ux-summary"><span>旧库 {hours(receipt.old_hours)}小时</span><span>新库 {hours(receipt.new_hours)}小时</span><strong>净变化 {receipt.delta_hours > 0 ? '+' : ''}{hours(receipt.delta_hours)}小时</strong></div><p>旧版本及操作历史保留。本次导入不会直接更新学生正式时长和排名，由管理员统一发布后生效。</p><div className="ux-flow-footer"><button disabled={busy} onClick={() => {
+          setStep(2);
+          setReceipt(null);
+        }}>返回检查</button><button disabled={busy} className="primary-button" onClick={execute}>{busy ? '正在导入…' : mode === 'update' ? '确认更新此时长库' : '确认导入此时长库'}</button></div><small>请求超时可用同一摘要重试，系统会核对已完成结果，避免重复导入。</small></Panel>}
+    {step === 4 && result && <Panel title="导入处理结果"><p role="status">{result.message}</p><div className="ux-summary"><span>实际导入 {result.count}条</span><span>跳过重复 {result.skipped_duplicate_count || 0}条</span><span>按选择跳过 {result.skipped_selected_count || 0}条</span><span>替换旧记录 {result.replaced_record_count || 0}条</span></div><p>时长库：{result.note} · 文件：{result.filename}</p><p className="ux-muted">批次编号：{result.batch_id || '已有批次，无新增'}</p><button onClick={() => {
+        setStep(0);
+        setPreview(null);
+        setReceipt(null);
+        setResult(null);
+        setFile(null);
+        setNewKey(`dataset:${crypto.randomUUID()}`);
+      }}>开始下一次导入</button></Panel>}
+    <details className="ux-history"><summary>查看历史导入批次（{batches.length}）</summary><Table columns={['时长库', '文件', '记录数', '版本状态', '时间']} rows={batches.slice(0, 50).map(batch => [batch.note || '未命名', batch.filename, batch.record_count, batch.superseded_at ? '已替换，历史保留' : '当前版本', new Date(batch.created_at).toLocaleString('zh-CN', {
+        timeZone: 'Asia/Shanghai'
+      })])} /></details>
+  </section>;
+}

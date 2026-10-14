@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
+import AcademicSummary from './AcademicSummary';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 const ALL = 'all';
@@ -41,6 +42,8 @@ function normalizeResult(data) {
       college: student.college || '未填写',
       grade: student.grade || '未填写'
     },
+    academic_summaries: data.academic_summaries || [],
+    review_progress: data.review_progress || [],
     total_hours: Number(data.total_hours || student.total_hours || 0),
     data_version: dataVersion,
     verification_code: data.verification_code || data.verificationCode || student.verification_code || '',
@@ -54,12 +57,12 @@ function normalizeRecord(record, index) {
   const activityPeriod = sanitizePublicText(record.activity_period, '');
   const rawTime = sanitizePublicText(record.activity_time_label || activityPeriod || record.activity_date || '', '累计记录');
   const isSummaryRecord = Boolean(record.is_summary_record) || isLegacyPlaceholder(record.activity_name) || isLegacyPlaceholder(record.activity_period);
-  const timeScope = isSummaryRecord
+  const timeScope = activityPeriod === '2026年10月之前导入的活动' ? '历史导入' : isSummaryRecord
     ? '累计记录'
     : activityPeriod
       ? '记录周期'
     : record.activity_date
-      ? '公示日期'
+      ? '活动日期'
       : '未标明';
 
   return {
@@ -118,14 +121,15 @@ function getBatchId(version) {
 }
 
 function getTimeNote(scope) {
+  if (scope === '历史导入') return '2026年10月之前导入的活动，未提供可靠发生日期。';
   if (scope === '累计记录') {
     return '该记录为累计项，未提供单独活动名称或发生日期。';
   }
   if (scope === '记录周期') {
     return '该记录展示的是活动所属栏目、学期或公示周期，不代表活动真实发生日期。';
   }
-  if (scope === '公示日期') {
-    return '此日期来自公示或系统记录，仅用于查询排序，不代表活动真实发生日期。';
+  if (scope === '活动日期') {
+    return '由提交人或导入文件提供的活动发生日期；导入时间由系统单独记录。';
   }
   return '来源数据未提供可展示的时间说明。';
 }
@@ -311,7 +315,7 @@ function App() {
           throw new Error('查询过于频繁，请稍后再试。');
         }
         if (response.status === 404) {
-          throw new Error('未查到匹配记录。可能原因：学号或姓名与公示数据不一致、记录尚未通过审核，或当前数据批次暂未覆盖该学生。');
+          throw new Error('未查到匹配记录。请核对学号和姓名，或联系学院确认是否已提交活动名单。');
         }
         throw new Error(data.message || '查询失败，请稍后再试。');
       }
@@ -335,7 +339,7 @@ function App() {
           <div className="heading-block">
             <p className="kicker">重庆理工大学</p>
             <h1 id="page-title">志愿时长查询</h1>
-            <p className="subtitle">输入本人学号和姓名，查询已通过审核的志愿服务时长。</p>
+            <p className="subtitle">输入本人学号和姓名，查询已发布志愿时长及本人活动审核进度。</p>
           </div>
           <div className="version-card" aria-label="当前数据版本">
             <span>数据版本</span>
@@ -407,7 +411,7 @@ function App() {
               </dl>
             </div>
             <div className="total-hours">
-              <span>累计总时长</span>
+              <span>已发布累计时长</span>
               <strong>{formatHours(result.total_hours)}</strong>
               <span>小时</span>
             </div>
@@ -435,6 +439,12 @@ function App() {
             <p className="batch-note">批次备注：{result.data_version.note}</p>
           )}
 
+          <AcademicSummary result={result} />
+          <p className="data-note">正式时长与排名以统一发布的累计库为准。新活动审核完成后统一公示；重新查询可查看本人最新审核进度。</p>
+          <section className="academic-summary" aria-label="本人活动审核进度">
+            <div className="records-header"><div><h3>本人活动审核进度</h3><p>以下活动尚未计入当前公示时长和排名。</p></div><button type="button" className="secondary-button" disabled={loading} onClick={handleSubmit}>重新查询进度</button></div>
+            {result.review_progress.length ? <div className="table-wrap"><table><thead><tr><th>活动</th><th>日期</th><th>申报时长</th><th>审核进度</th><th>说明</th></tr></thead><tbody>{result.review_progress.map((item, index) => <tr key={index}><td>{item.activity_name}</td><td>{item.activity_date}</td><td>{formatHours(item.hours)} 小时</td><td>{item.status_label}</td><td>{item.reject_reason || '等待办公室审核完成后统一发布'}</td></tr>)}</tbody></table></div> : <p>当前没有尚未发布的活动记录。</p>}
+          </section>
           <div className="records-header">
             <div>
               <h3>活动明细</h3>
@@ -541,6 +551,9 @@ function App() {
           </div>
         </section>
       )}
+<section className="feedback-panel" aria-label="时长问题反馈"><h3>时长或信息有误？</h3><p>请提供学号、姓名、学年、活动名称、应有时长和证明材料，由办公室核对处理。</p>
+        {activeVersion?.feedback_email ? <a href={`mailto:${activeVersion.feedback_email}?subject=${encodeURIComponent(`志愿时长核对 ${result?.student.student_id || ''}`)}`}>联系办公室：{activeVersion.feedback_email}</a> : <p>办公室反馈邮箱待配置，请先联系学院负责人。</p>}
+      </section>
       <footer className="public-footer">
         <div className="public-metrics" aria-label="站点统计">
           <span>累计访问 <strong>{metrics?.visits?.toLocaleString('zh-CN') ?? '—'}</strong></span>

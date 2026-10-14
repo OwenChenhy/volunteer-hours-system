@@ -15,14 +15,15 @@ const ROLE_CAPABILITIES = {
     'import:manage',
     'stats:read',
     'reviews:manage',
+    'reviews:read',
     'ops:read',
     'audit:read',
   ],
   college_admin: [
-    'logs:review',
+    'activities:write',
+    'logs:submit',
     'stats:read',
     'reviews:read',
-    'reviews:manage',
     'audit:read',
   ],
   auditor: [
