@@ -1,0 +1,112 @@
+[
+  {
+    "name": "first HTTP student query writes a Redis result with a five-minute TTL",
+    "passed": true,
+    "ms": 190
+  },
+  {
+    "name": "repeat HTTP queries hit Redis, skip business record reads, and still count visits",
+    "passed": true,
+    "ms": 76
+  },
+  {
+    "name": "normalized identity uses the same cached result",
+    "passed": true,
+    "ms": 7
+  },
+  {
+    "name": "another backend process reuses the same Redis result",
+    "passed": true,
+    "ms": 804
+  },
+  {
+    "name": "parallel cold queries share one database load",
+    "passed": true,
+    "ms": 10
+  },
+  {
+    "name": "wrong names and matching IDs with other names never reuse personal results",
+    "passed": true,
+    "ms": 18
+  },
+  {
+    "name": "cached ranking uses the canonical student profile and hides other identities",
+    "passed": true,
+    "ms": 5
+  },
+  {
+    "name": "ranking cache hits skip rebuilding rankings and preserve per-student masking",
+    "passed": true,
+    "ms": 8
+  },
+  {
+    "name": "ranking pages, limits and invalid identities are separated before cache lookup",
+    "passed": true,
+    "ms": 7
+  },
+  {
+    "name": "editing approved draft hours invalidates progress without changing published totals",
+    "passed": true,
+    "ms": 1126
+  },
+  {
+    "name": "pending-only students and rejected progress refresh before publication",
+    "passed": true,
+    "ms": 2251
+  },
+  {
+    "name": "publishing a new version bypasses old personal and ranking results immediately",
+    "passed": true,
+    "ms": 30
+  },
+  {
+    "name": "a publication from another process refreshes this process within the version interval",
+    "passed": true,
+    "ms": 1749
+  },
+  {
+    "name": "cached queries never replace the editable admin draft lookup",
+    "passed": true,
+    "ms": 1133
+  },
+  {
+    "name": "expired or corrupt JSON results are safely rebuilt",
+    "passed": true,
+    "ms": 1136
+  },
+  {
+    "name": "a stalled Redis command falls back within the timeout",
+    "passed": true,
+    "ms": 513
+  },
+  {
+    "name": "Redis reconnects after failure without restarting the backend",
+    "passed": true,
+    "ms": 5117
+  },
+  {
+    "name": "an unresponsive TCP handshake is bounded and does not prevent queries",
+    "passed": true,
+    "ms": 1068
+  },
+  {
+    "name": "Redis absent from configuration preserves the public query contract",
+    "passed": true,
+    "ms": 15
+  },
+  {
+    "name": "invalid Redis configuration fails open instead of returning a query error",
+    "passed": true,
+    "ms": 81
+  },
+  {
+    "name": "failed database loads are not cached and the next request can retry",
+    "passed": true,
+    "ms": 85
+  },
+  {
+    "name": "warm repeated service queries avoid all business record reads",
+    "passed": true,
+    "ms": 91
+  }
+]

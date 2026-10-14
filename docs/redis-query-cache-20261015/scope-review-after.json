@@ -1,0 +1,98 @@
+[
+  {
+    "name": "organizer cannot move approved activity hours to another year or term",
+    "passed": true
+  },
+  {
+    "name": "college_admin cannot move approved activity hours to another year or term",
+    "passed": true
+  },
+  {
+    "name": "description-only activity saves preserve office-assigned record periods",
+    "passed": true
+  },
+  {
+    "name": "office activity year changes preserve unrelated per-record term overrides",
+    "passed": true
+  },
+  {
+    "name": "same-day clock changes do not overwrite reviewed record classification",
+    "passed": true
+  },
+  {
+    "name": "an approval committed during activity editing is protected after the row lock",
+    "passed": true
+  },
+  {
+    "name": "a published 5-hour student ranks above a 4-hour peer despite an earlier missing grade",
+    "passed": true
+  },
+  {
+    "name": "draft and office year summaries use the same full student total and rank",
+    "passed": true
+  },
+  {
+    "name": "all-grade published and office summaries contain one row per student identity",
+    "passed": true
+  },
+  {
+    "name": "newer blank metadata falls back to the latest nonempty approved profile",
+    "passed": true
+  },
+  {
+    "name": "college changes merge complete student hours in rankings and college statistics",
+    "passed": true
+  },
+  {
+    "name": "matching student IDs with different names remain separate identities",
+    "passed": true
+  },
+  {
+    "name": "college-scoped lookup retains record boundaries and avoids a rank for a different total",
+    "passed": true
+  },
+  {
+    "name": "pending metadata cannot change an approved or frozen student profile",
+    "passed": true
+  },
+  {
+    "name": "an older split snapshot is ranked from its frozen records without rewriting the batch",
+    "passed": true
+  },
+  {
+    "name": "pending activity date corrections preserve unrelated office overrides",
+    "passed": true
+  },
+  {
+    "name": "Excel preview rejects overlong adjustment_reason with its row and field issue",
+    "passed": true
+  },
+  {
+    "name": "prepare rejects overlong adjustment_reason before producing a confirmation record",
+    "passed": true
+  },
+  {
+    "name": "Excel preview rejects overlong activity_period with its row and field issue",
+    "passed": true
+  },
+  {
+    "name": "prepare rejects overlong activity_period before producing a confirmation record",
+    "passed": true
+  },
+  {
+    "name": "multipart import cannot produce a confirmation summary for a 600-character reason",
+    "passed": true
+  },
+  {
+    "name": "direct confirmation rejects an invalid mixed batch as validation without partial writes",
+    "passed": true
+  },
+  {
+    "name": "exact text limits preserve all characters in a real ASCII import",
+    "passed": true
+  },
+  {
+    "name": "exact text limits preserve all characters in a real UNICODE import",
+    "passed": true
+  }
+]

@@ -19,7 +19,8 @@
     "test:private-review": "node scripts/private-review-regression.js",
     "test:lifecycle-review": "node scripts/lifecycle-review-regression.js",
     "test:resubmit-review": "node scripts/resubmit-review-regression.js",
-    "test:scope-review": "node scripts/scope-review-regression.js"
+    "test:scope-review": "node scripts/scope-review-regression.js",
+    "test:query-cache": "node scripts/query-cache-regression.js"
   },
   "keywords": [],
   "author": "",

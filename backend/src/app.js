@@ -10,6 +10,7 @@ function buildApp() {
     logger: true,
     bodyLimit: 1048576 * 10 // 10MB
   });
+  app.addHook('onClose', async () => require('./cache/redis').close());
 
   // 基础插件注册
   app.register(cors, {

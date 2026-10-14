@@ -3,6 +3,7 @@ const rateLimitConfig = require('../middlewares/rateLimit');
 const db = require('../db');
 const academic = require('../services/academicService');
 const publication = require('../services/publicationService');
+const cache = require('../cache/redis');
 
 module.exports = async function (fastify, opts) {
   const sharedCampusLimit = { rateLimit: { max: 3600, timeWindow: '1 minute' } };
@@ -37,19 +38,23 @@ fastify.get('/meta', { config: sharedCampusLimit }, async (request, reply) => {
     } } }
   }, async (request, reply) => {
     const input = request.body;
+    reply.header('Cache-Control', 'no-store');
     if (!academic.validSummaryPeriod(input.academic_year)) return reply.code(400).send({ message: '请选择历史导入或填写连续两年的学年' });
     const state = await publication.current();
     if (input.publication_id && input.publication_id !== state.batch.id) return reply.code(409).send({ message: '公示版本已更新，请重新查询本人后查看排名' });
-    const person = state.people.get(publication.identityKey(input.student_id.trim(), input.student_name.trim()))?.[0];
-    if (!person) return reply.code(404).send({ message: '尚无已发布时长，请先查看审核进度' });
+    const records = state.people.get(publication.identityKey(input.student_id.trim(), input.student_name.trim()));
+    if (!records?.length) return reply.code(404).send({ message: '尚无已发布时长，请先查看审核进度' });
+    const person = academic.studentProfile(records);
     if (!person.college || !person.grade) return reply.code(409).send({ message: '学院或年级信息缺失，请先联系办公室核对' });
-    const summary = publication.summary(state, { academic_year: input.academic_year, page: input.page, limit: input.limit, college: person.college, grade: person.grade });
-    summary.rows = summary.rows.map((row) => {
-      const self = row.student_id === input.student_id.trim() && row.student_name === input.student_name.trim();
-      return { ...row, is_self: self, student_id: self ? row.student_id : (row.student_id.length > 4 ? '*'.repeat(row.student_id.length - 4) + row.student_id.slice(-4) : '*'.repeat(row.student_id.length)), student_name: self ? row.student_name : (row.student_name.length > 1 ? row.student_name.slice(0, 1) + '*'.repeat(row.student_name.length - 1) : '*') };
+    const cacheKey = queryService.publicCacheKey('summary', state, [input.student_id.trim(), input.student_name.trim(), input.academic_year, input.page || 1, input.limit || 50, person.college, person.grade, publication.meta(state).feedback_email]);
+    return cache.remember(cacheKey, () => {
+      const summary = publication.summary(state, { academic_year: input.academic_year, page: input.page, limit: input.limit, college: person.college, grade: person.grade });
+      summary.rows = summary.rows.map((row) => {
+        const self = row.student_id === input.student_id.trim() && row.student_name === input.student_name.trim();
+        return { ...row, is_self: self, student_id: self ? row.student_id : (row.student_id.length > 4 ? '*'.repeat(row.student_id.length - 4) + row.student_id.slice(-4) : '*'.repeat(row.student_id.length)), student_name: self ? row.student_name : (row.student_name.length > 1 ? row.student_name.slice(0, 1) + '*'.repeat(row.student_name.length - 1) : '*') };
+      });
+      return { ...summary, college: person.college, grade: person.grade, data_version: publication.meta(state) };
     });
-    reply.header('Cache-Control', 'no-store');
-    return { ...summary, college: person.college, grade: person.grade, data_version: publication.meta(state) };
   });
 
   // 公开查询接口，带限流
