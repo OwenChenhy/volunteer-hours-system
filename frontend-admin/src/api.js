@@ -266,7 +266,7 @@ async function requestHealth() {
   return data;
 }
 
-async function downloadFile(path, filename) {
+async function downloadFile(path, filename, useServerFilename = false) {
   const token = localStorage.getItem("adminToken");
   const response = await fetch(`${API_BASE}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -274,9 +274,17 @@ async function downloadFile(path, filename) {
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(text || "下载失败");
+    if (response.status === 401 && token) {
+      localStorage.removeItem('adminToken');
+      window.dispatchEvent(new Event('admin-session-expired'));
+    }
+    let message = text;
+    try { message = JSON.parse(text).message || text; } catch {}
+    throw new Error(message || "下载失败");
   }
 
+  const serverFilename = useServerFilename && response.headers.get('content-disposition')?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  if (serverFilename) filename = decodeURIComponent(serverFilename);
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -291,6 +299,7 @@ async function downloadFile(path, filename) {
 export function getAcademicSummary(params) { return request(`/stats/academic-summary${toQuery(params)}`); }
 export const getPublicationStatus = () => request('/publications');
 export const publishHours = (body) => request('/publications', { method: 'POST', body: JSON.stringify(body) });
+export const exportPublication = id => downloadFile(`/publications/export${toQuery({publication_id:id})}`, '公示时长库.zip', true);
 
 export const logout = () => request('/auth/logout', {method:'POST'});
 export const getActivity = id => request(`/activities/${id}`);

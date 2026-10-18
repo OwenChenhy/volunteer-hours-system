@@ -19,7 +19,8 @@
     "test:private-review": "node scripts/private-review-regression.js",
     "test:lifecycle-review": "node scripts/lifecycle-review-regression.js",
     "test:resubmit-review": "node scripts/resubmit-review-regression.js",
-    "test:scope-review": "node scripts/scope-review-regression.js"
+    "test:scope-review": "node scripts/scope-review-regression.js",
+    "test:publication-export": "node scripts/publication-export-regression.js"
   },
   "keywords": [],
   "author": "",
@@ -35,7 +36,8 @@
     "fastify": "^5.8.5",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.20.0",
-    "redis": "^5.11.0"
+    "redis": "^5.11.0",
+    "jszip": "3.10.1"
   },
   "overrides": {
     "fast-csv": "^4.3.6",
