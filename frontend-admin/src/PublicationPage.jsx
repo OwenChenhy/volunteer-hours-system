@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getPublicationStatus, publishHours } from './api';
+import { exportPublication, getPublicationStatus, publishHours } from './api';
 
 export default function PublicationPage() {
   const [status, setStatus] = useState(null);
@@ -7,11 +7,20 @@ export default function PublicationPage() {
   const [label, setLabel] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
   async function refresh() {
     try { setStatus(await getPublicationStatus()); }
     catch (error) { setMessage(error.message); }
   }
   useEffect(() => { refresh(); }, []);
+  async function download(id) {
+    setExporting(true); setMessage('');
+    try {
+      await exportPublication(id);
+      setMessage('公示Excel压缩包已生成并开始下载。');
+    } catch (error) { setMessage(error.message); }
+    finally { setExporting(false); }
+  }
   async function publish(event) {
     event.preventDefault();
     setBusy(true); setMessage('');
@@ -29,17 +38,19 @@ export default function PublicationPage() {
     {message && <p role="status">{message}</p>}
     {status && <>
       <p>当前公示：{status.published.source_name} · {status.published.record_count}条 · {new Date(status.published.last_updated_at).toLocaleString('zh-CN')}</p>
+      <button type="button" disabled={busy || exporting} onClick={() => download(status.published.publication_id)}>{exporting ? '正在生成公示Excel…' : '导出当前公示Excel（ZIP）'}</button>
+      <p>按参考时长库的学院文件、年级工作表及表头样式导出，缺少原表的学院参照计算机学院模板。只包含所选已发布版本；未知学期的历史明细保留在备注，无备注列的原表使用时长单元格批注。公示未保存的性别、联系方式留空。</p>
       <p>待审核：{pending}条；审核通过（含历史）：{status.counts.approved || 0}条；{status.has_changes ? '审核库有更新，尚未统一发布。' : '审核库与当前公示一致。'}</p>
       <form className="form-grid" onSubmit={publish}>
         <label className="field"><span>公示月份</span><input type="month" value={month} onChange={event => setMonth(event.target.value)} required /></label>
         <label className="field"><span>公示说明</span><input value={label} onChange={event => setLabel(event.target.value)} maxLength={128} placeholder={`${month}累计时长公示`} /></label>
-        <div className="form-actions"><button className="primary-button" type="submit" disabled={busy || pending > 0 || (!status.has_changes && month === status.published.publication_month)}>{busy ? '计算汇总并发布中…' : '全部审核完成，统一发布'}</button>
+        <div className="form-actions"><button className="primary-button" type="submit" disabled={busy || exporting || pending > 0 || (!status.has_changes && month === status.published.publication_month)}>{busy ? '计算汇总并发布中…' : '全部审核完成，统一发布'}</button>
         <button className="secondary-button" type="button" onClick={refresh} disabled={busy}>刷新审核状态</button></div>
       </form>
       {pending > 0 && <p>请在“审核”模块处理剩余记录后再发布。</p>}
       <h3>发布记录</h3>
-      <div className="table-wrap"><table><thead><tr><th>月份</th><th>说明</th><th>记录数</th><th>累计时长</th><th>发布时间</th></tr></thead>
-      <tbody>{status.history.map(row => <tr key={row.id}><td>{row.publication_month}</td><td>{row.label}</td><td>{row.record_count}</td><td>{row.total_hours}</td><td>{new Date(row.published_at).toLocaleString('zh-CN')}</td></tr>)}</tbody></table></div>
+      <div className="table-wrap"><table><thead><tr><th>月份</th><th>说明</th><th>记录数</th><th>累计时长</th><th>发布时间</th><th>操作</th></tr></thead>
+      <tbody>{status.history.map(row => <tr key={row.id}><td>{row.publication_month}</td><td>{row.label}</td><td>{row.record_count}</td><td>{row.total_hours}</td><td>{new Date(row.published_at).toLocaleString('zh-CN')}</td><td><button type="button" disabled={busy || exporting} onClick={() => download(row.id)}>导出Excel（ZIP）</button></td></tr>)}</tbody></table></div>
     </>}
   </section>;
 }
