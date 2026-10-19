@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const db = require('../db');
+const cache = require('../cache/redis');
 const { authenticate } = require('../middlewares/auth');
 const { requireCapability } = require('../middlewares/rbac');
 
@@ -10,8 +11,12 @@ module.exports = async function (fastify, opts) {
   fastify.addHook('preHandler', authenticate);
   fastify.addHook('preHandler', requireCapability('ops:read'));
 
-  fastify.get('/status', async (request, reply) => buildStatus());
-  fastify.get('/monitoring', async (request, reply) => buildStatus());
+  const currentStatus = async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    return buildStatus();
+  };
+  fastify.get('/status', currentStatus);
+  fastify.get('/monitoring', currentStatus);
 };
 
 async function buildStatus() {
@@ -20,6 +25,7 @@ async function buildStatus() {
   const status = {
     checked_at: now.toISOString(),
     database: await checkDatabase(alerts),
+    redis: await cache.getStatus(),
     backups: await checkBackups(now, alerts),
     supabase: checkSupabase(),
     monitoring: {
@@ -27,6 +33,9 @@ async function buildStatus() {
       alerts
     }
   };
+  if (status.redis.configured && !status.redis.ok) {
+    alerts.push({ code: 'redis_unavailable', level: 'warning', message: status.redis.message });
+  }
   status.ok = alerts.length === 0 || alerts.every((alert) => alert.level !== 'critical');
   status.api = {
     status: 'ok',

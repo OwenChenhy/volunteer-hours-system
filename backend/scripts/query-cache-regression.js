@@ -2,6 +2,9 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const net = require('node:net');
+const os = require('node:os');
+const path = require('node:path');
+const jwt = require('jsonwebtoken');
 const { spawnSync } = require('node:child_process');
 const { createClient } = require('redis');
 
@@ -13,6 +16,10 @@ assert(redisUrl && new URL(redisUrl).hostname === '127.0.0.1' && new URL(redisUr
 process.env.DATABASE_URL = testUrl;
 process.env.REDIS_URL = redisUrl;
 process.env.JWT_SECRET = crypto.randomBytes(32).toString('hex');
+
+const backupFixture = fs.mkdtempSync(path.join(os.tmpdir(), 'cache-ops-backup-'));
+fs.writeFileSync(path.join(backupFixture, 'fixture.json'), JSON.stringify({ synthetic: true }));
+process.env.BACKUP_DIR = backupFixture;
 
 const db = require('../src/db');
 const publication = require('../src/services/publicationService');
@@ -64,6 +71,27 @@ async function main() {
     [identity.student_id, identity.student_name, college, peer.student_id, peer.student_name, otherCollege]);
   const first = await publication.publish(admin, { publication_month: '2026-10', label: '合成缓存基线' });
   await app.ready();
+  const opsTokens = { admin: jwt.sign({ id: admin, session_version: 0, token_type: 'access' }, process.env.JWT_SECRET) };
+  for (const role of ['super_admin', 'data_admin', 'auditor', 'college_admin', 'organizer']) {
+    const id = crypto.randomUUID();
+    await db.query('INSERT INTO users(id,username,password_hash,real_name,role) VALUES($1,$2,$3,$4,$5)',
+      [id, 'cache-ops-' + role, 'not-a-login-credential', '合成运维账号', role]);
+    opsTokens[role] = jwt.sign({ id, session_version: 0, token_type: 'access' }, process.env.JWT_SECRET);
+  }
+  const ops = (role = 'admin', path = '/status') => app.inject({ method: 'GET', url: '/api/v1/ops' + path,
+    headers: role ? { authorization: 'Bearer ' + opsTokens[role] } : {} });
+  await check('operations reports a healthy empty Redis with a live timestamp and no connection URL', async () => {
+    const response = await ops(); assert.equal(response.statusCode, 200);
+    const value = response.json().redis; assert(value, 'operations response is missing Redis status');
+    assert.equal(value.status, 'ok'); assert.equal(value.ok, true); assert.equal(value.configured, true);
+    assert.equal(value.keys, 0); assert(Date.now() - Date.parse(value.checked_at) < 2000);
+    assert(!JSON.stringify(value).includes('redis://')); assert.equal(response.headers['cache-control'], 'no-store');
+  });
+  await check('operations Redis details retain the six-role access boundary', async () => {
+    assert.equal((await ops(null)).statusCode, 401);
+    for (const role of ['admin', 'super_admin', 'data_admin', 'auditor']) assert.equal((await ops(role)).statusCode, 200);
+    for (const role of ['college_admin', 'organizer']) assert.equal((await ops(role)).statusCode, 403);
+  });
   let progressReads = 0, summaryBuilds = 0;
   const originalQuery = db.query, originalSummary = publication.summary;
   db.query = async (sql, params) => {
@@ -82,6 +110,16 @@ async function main() {
     studentKey = (await keys('student'))[0]; assert(studentKey, 'no student result was written to Redis');
     assert(!studentKey.includes(identity.student_id) && !studentKey.includes(identity.student_name));
     const ttl = await observer.ttl(studentKey); assert(ttl > 0 && ttl <= 300);
+  });
+  await check('operations and its monitoring alias refresh the actual Redis key count', async () => {
+    const before = (await ops()).json().redis; assert(before, 'operations response is missing Redis status');
+    assert.equal(before.keys, await observer.dbSize());
+    await observer.set('ops:synthetic-key', 'fixture', { EX: 60 });
+    try {
+      const response = await ops('admin', '/monitoring'); assert.equal(response.statusCode, 200);
+      assert.equal(response.json().redis.keys, before.keys + 1);
+      assert.equal(response.headers['cache-control'], 'no-store');
+    } finally { await observer.del('ops:synthetic-key'); }
   });
   await check('repeat HTTP queries hit Redis, skip business record reads, and still count visits', async () => {
     const beforeReads = progressReads, beforeCount = await counter();
@@ -199,10 +237,22 @@ async function main() {
     const response = await call(); assert.equal(response.statusCode, 200); assert.equal(response.json().total_hours, 7);
     assert(Date.now() - started < 1200, 'Redis must not stall student queries'); assert.equal(progressReads - before, 1);
   });
+  await check('operations warns promptly during Redis failure while student queries still work', async () => {
+    const started = Date.now(), response = await ops(); assert.equal(response.statusCode, 200);
+    const value = response.json(); assert(value.redis, 'operations response is missing Redis status');
+    assert.equal(value.redis.status, 'warning'); assert.equal(value.redis.ok, false); assert.equal(value.redis.keys, null);
+    assert(value.monitoring.alerts.some(alert => alert.code === 'redis_unavailable' && alert.level === 'warning'));
+    assert.equal(value.monitor.status, 'warning'); assert(Date.now() - started < 1200);
+  });
   await check('Redis reconnects after failure without restarting the backend', async () => {
     await sleep(5100); const before = progressReads;
     const response = await call(); assert.equal(response.statusCode, 200); assert.equal(response.json().total_hours, 7);
     assert.equal(progressReads, before, 'recovered Redis must resume cache hits');
+  });
+  await check('operations clears the Redis warning after the connection recovers', async () => {
+    const response = await ops(), value = response.json(); assert(value.redis, 'operations response is missing Redis status');
+    assert.equal(value.redis.status, 'ok'); assert.equal(value.redis.keys, await observer.dbSize());
+    assert(!value.monitoring.alerts.some(alert => alert.code === 'redis_unavailable'));
   });
   await check('an unresponsive TCP handshake is bounded and does not prevent queries', async () => {
     await cache.close(); const sockets = new Set();
@@ -219,13 +269,26 @@ async function main() {
   });
   await check('Redis absent from configuration preserves the public query contract', async () => {
     await cache.close(); process.env.REDIS_URL = '';
-    try { const response = await call(); assert.equal(response.statusCode, 200); assert.equal(response.json().total_hours, 7); }
-    finally { process.env.REDIS_URL = redisUrl; }
+    try {
+      const response = await call(); assert.equal(response.statusCode, 200); assert.equal(response.json().total_hours, 7);
+      const status = (await ops()).json().redis; assert(status, 'operations response is missing Redis status');
+      assert.equal(status.status, 'disabled'); assert.equal(status.configured, false); assert.equal(status.keys, null);
+    } finally { process.env.REDIS_URL = redisUrl; }
   });
   await check('invalid Redis configuration fails open instead of returning a query error', async () => {
     await cache.close(); process.env.REDIS_URL = 'invalid-redis-url';
     try { const response = await call(); assert.equal(response.statusCode, 200); assert.equal(response.json().total_hours, 7); }
     finally { await cache.close(); process.env.REDIS_URL = redisUrl; }
+  });
+  await check('operations never exposes Redis credentials when the configured server is unreachable', async () => {
+    await cache.close(); process.env.REDIS_URL = 'redis://ops-private-user:ops-private-password@127.0.0.1:1/0';
+    try {
+      const response = await ops(); assert.equal(response.statusCode, 200);
+      const value = response.json().redis; assert(value, 'operations response is missing Redis status');
+      assert.equal(value.status, 'warning'); assert.equal(value.configured, true); assert.equal(value.keys, null);
+      assert(!JSON.stringify(value).includes('ops-private')); assert(!JSON.stringify(value).includes('redis://'));
+      assert.equal((await call()).statusCode, 200);
+    } finally { await cache.close(); process.env.REDIS_URL = redisUrl; }
   });
   await check('failed database loads are not cached and the next request can retry', async () => {
     await cache.deleteByPrefix('query:'); const monitored = db.query;
@@ -248,6 +311,7 @@ async function main() {
 main().catch(error => checks.push({ name: 'isolated cache harness', passed: false, error: error.message })).finally(async () => {
   if (process.env.REDIS_QUERY_RESULT_PATH) fs.writeFileSync(process.env.REDIS_QUERY_RESULT_PATH, JSON.stringify(checks, null, 2));
   await app.close(); await cache.close(); if (observer.isOpen) observer.destroy(); await db.pool.end();
+  fs.rmSync(backupFixture, { recursive: true, force: true });
   console.log(JSON.stringify({ passed: checks.filter(value => value.passed).length, failed: checks.filter(value => !value.passed).length }));
   if (checks.some(value => !value.passed)) process.exitCode = 1;
 });
