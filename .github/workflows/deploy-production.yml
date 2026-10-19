@@ -1,0 +1,61 @@
+name: Deploy production
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      check_only:
+        description: Check the production connection without deploying
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      (github.event_name == 'pull_request_target' && github.event.pull_request.merged == true) ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: production
+      url: https://zysc.hanyao.me
+    env:
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+      DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+      CHECK_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.check_only }}
+    steps:
+      - name: Deploy the merged main commit over restricted SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_HOST:?Missing production DEPLOY_HOST}"
+          : "${DEPLOY_USER:?Missing production DEPLOY_USER}"
+          : "${DEPLOY_PORT:?Missing production DEPLOY_PORT}"
+          : "${DEPLOY_KNOWN_HOSTS:?Missing pinned SSH host key}"
+          : "${DEPLOY_SSH_KEY:?Missing production DEPLOY_SSH_KEY}"
+          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
+          umask 077
+          ssh_dir="$(mktemp -d "$RUNNER_TEMP/production-ssh.XXXXXX")"
+          trap 'rm -rf -- "$ssh_dir"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$ssh_dir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          command="deploy $DEPLOY_SHA"
+          if [[ "$CHECK_ONLY" == true ]]; then command=check; fi
+          ssh -i "$ssh_dir/key" -p "$DEPLOY_PORT" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
+            -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
+            "$DEPLOY_USER@$DEPLOY_HOST" "$command"
