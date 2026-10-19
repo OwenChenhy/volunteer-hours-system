@@ -24,7 +24,7 @@ const ids = [];
       const id = crypto.randomUUID(); ids.push(id);
       const student = prefix + '-' + suffix;
       await db.query(`INSERT INTO volunteer_logs(id,student_id,student_name,college,grade,activity_name,hours,source,status,import_detail_status,is_legacy_processed)
-        VALUES($1,$2,'复核回归夹具','计算机科学与工程学院','26级','复核回归夹具',2.5,'imported','approved',$3,$4)`, [id, student, status, flag]);
+        VALUES($1,$2,'复核回归夹具','计算机科学与工程学院','26级','复核回归夹具',2.5,'imported','approved',$3,$4)`, [id, student, status === 'cumulative_reconciliation' ? 'cumulative_record' : status, flag]);
       return { id, student };
     };
     const confirmed = await add('confirm', 'summary_conflict');

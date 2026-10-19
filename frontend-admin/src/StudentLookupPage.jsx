@@ -76,6 +76,12 @@ export default function StudentLookupPage() {
     </form>}
     {result && <>{result.query_read_only && <p role="status">当前显示已公示的冻结版本，仅供核对。更正请按学号或姓名查询当前审核记录。</p>}<p>匹配 {result.total_matches} 人 · 第 {result.page || 1} 页</p>{result.matches.map((student) => <section className="lookup-result" key={`${student.student_id}-${student.student_name}`}>
       <h3>{student.student_name} · {student.student_id}</h3><p>{student.college || '未填写学院'} · {student.grade || '未填写年级'} · 净累计 {hours(student.total_hours)} 小时</p>
+      {(student.historical_balances || []).length > 0 && <section aria-label="历史累计核定"><h4>历史成绩单累计</h4>
+        <p>以下是累计核定依据，已计入净累计，不属于活动明细。</p>
+        <div className="table-wrap"><table className="data-table"><thead><tr><th>类型</th><th>原表累计</th><th>计入账面时长</th></tr></thead><tbody>
+          {student.historical_balances.map((row, index) => <tr key={row.id || index}><td>{row.record_kind === 'historical_balance' ? '成绩单核定差额' : '原表累计项'}</td><td>{hours(row.source_total_hours)} 小时</td><td>{hours(row.hours)} 小时</td></tr>)}
+        </tbody></table></div>
+      </section>}
       <div className="table-wrap"><table className="data-table"><thead><tr>{['活动', '日期', '学年', '归属', '时长', '操作'].map((label) => <th key={label}>{label}</th>)}</tr></thead><tbody>
         {(student.records || []).filter((row) => (!scopeYear || row.academic_year === scopeYear) && (!scopeTerm || row.academic_term === scopeTerm)).map((row) => <tr key={row.id || row.activity_code}><td>{row.activity_name}</td><td>{row.activity_time_label || row.activity_date || legacyLabel}</td><td>{row.academic_year === 'legacy' ? '历史导入' : row.academic_year || '待确认'}</td><td>{terms[row.academic_term] || '待确认'}</td><td>{hours(row.hours)}</td><td>{canEditResult && row.id && <button type="button" onClick={() => setEditing({ ...row, ...student, ...row, historical: !row.activity_date, academic_year: row.academic_year === 'legacy' ? '' : row.academic_year, student_id: student.student_id, student_name: student.student_name, college: student.college || '', grade: student.grade || '', note: '', sync_student_info: true })}>修改</button>}</td></tr>)}
       </tbody></table></div>

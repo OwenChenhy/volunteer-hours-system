@@ -22,7 +22,8 @@
     "test:resubmit-review": "node scripts/resubmit-review-regression.js",
     "test:scope-review": "node scripts/scope-review-regression.js",
     "test:publication-export": "node scripts/publication-export-regression.js",
-    "test:review-closure": "node scripts/review-closure-regression.js"
+    "test:review-closure": "node scripts/review-closure-regression.js",
+    "test:historical-balance": "node scripts/historical-balance-regression.js"
   },
   "keywords": [],
   "author": "",
