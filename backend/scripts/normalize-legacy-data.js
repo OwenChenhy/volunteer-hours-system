@@ -7,7 +7,7 @@ const { normalizeCollegeName, isFormalCollegeName } = require('../src/utils/coll
 async function integrity(executor) {
   return (await executor.query(`SELECT count(*)::int AS records, sum(hours)::text AS hours,
     count(*) FILTER (WHERE status='approved')::int AS approved,
-    md5(string_agg(concat_ws('|',id,hours,status,student_id,student_name,grade,created_at), '\n' ORDER BY id)) AS identity_hours_hash
+    md5(string_agg(concat_ws('|',id,hours,status,student_id,student_name,grade,created_at,activity_period,academic_year,academic_term), '\n' ORDER BY id)) AS identity_hours_hash
     FROM volunteer_logs`)).rows[0];
 }
 
@@ -37,14 +37,15 @@ async function normalize(cutoff, apply = false) {
         result.college_updates.push({table, from: value, to: formal, records: updated.rowCount});
       }
     }
-    result.logs_cleared = (await client.query(`UPDATE volunteer_logs SET activity_date=NULL, activity_period=$1,
-      academic_year=NULL, academic_term='unassigned' WHERE created_at <= $2::timestamptz`, [LEGACY_LABEL, cutoff])).rowCount;
-    result.activities_cleared = (await client.query(`UPDATE activities SET start_time=NULL, end_time=NULL,
-      academic_year=NULL, academic_term='unassigned',
-      location=CASE WHEN COALESCE(location,'') ~ '(20[0-9]{2}|上半|下半|寒假|暑假|累计)' THEN NULL ELSE location END
-      WHERE created_at <= $1::timestamptz`, [cutoff])).rowCount;
+    // Source year/semester/vacation labels are not occurrence timestamps.
+    const datedLogs = (await client.query('SELECT 1 FROM volunteer_logs WHERE created_at <= $1::timestamptz AND activity_date IS NOT NULL LIMIT 1', [cutoff])).rows.length;
+    result.logs_cleared = datedLogs ? (await client.query(`UPDATE volunteer_logs SET activity_date=NULL
+      WHERE created_at <= $1::timestamptz AND activity_date IS NOT NULL`, [cutoff])).rowCount : 0;
+    const datedActivities = (await client.query('SELECT 1 FROM activities WHERE created_at <= $1::timestamptz AND (start_time IS NOT NULL OR end_time IS NOT NULL) LIMIT 1', [cutoff])).rows.length;
+    result.activities_cleared = datedActivities ? (await client.query(`UPDATE activities SET start_time=NULL,end_time=NULL
+      WHERE created_at <= $1::timestamptz AND (start_time IS NOT NULL OR end_time IS NOT NULL)`, [cutoff])).rowCount : 0;
     result.after = await integrity(client);
-    assert.deepEqual(result.after, result.before, 'record count, identity, hours, status and import timestamps must not change');
+    assert.deepEqual(result.after, result.before, 'record count, identity, hours, source categories, status and import timestamps must not change');
     if (apply) {
       await client.query(`INSERT INTO operation_logs(user_id,username,action,target_type,detail,ip)
         VALUES($1,'admin','data.normalize_legacy','volunteer_library',$2,'127.0.0.1')`, [owner.id, result]);

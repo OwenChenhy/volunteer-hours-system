@@ -454,7 +454,7 @@ function App() {
           <div className="records-header">
             <div>
               <h3>活动明细</h3>
-              <p>“活动时间”展示记录周期或公示日期，不作为真实活动发生日期证明。</p>
+              <p>历史明细保留原表的学年、上下半年或寒暑假分类；未提供具体发生日期的记录不补造日期。</p>
             </div>
             <span>{filteredRecords.length} / {result.records.length} 条记录</span>
           </div>

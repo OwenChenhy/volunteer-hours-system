@@ -37,13 +37,13 @@ function classify(row) {
   const date = row.activity_date instanceof Date ? row.activity_date.toISOString().slice(0, 10) : String(row.activity_date || '').slice(0, 10);
   const month = Number(date.slice(5, 7));
   const year = Number(date.slice(0, 4)) - (month < config.start_month ? 1 : 0);
-  const periodYear = text.match(/(20\d{2})\s*[-—]\s*(20\d{2})/);
+  const periodYear = text.match(/(20\d{2})\s*[-—–－]\s*(20\d{2})/);
   const academicYear = row.academic_year || (periodYear ? `${periodYear[1]}-${periodYear[2]}` : `${year}-${year + 1}`);
   let term = row.academic_term;
   if (!term) {
-    if (/寒假|暑假|寒暑假|暑期|寒期/.test(text)) term = 'vacation';
-    else if (/上半年|上学期|秋季学期/.test(text)) term = 'upper';
-    else if (/下半年|下学期|春季学期/.test(text)) term = 'lower';
+    if (/寒假|暑假|寒暑假|寒暑期|暑期|寒期/.test(text)) term = 'vacation';
+    else if (/上半(?:学)?年|上学期|秋季学期/.test(text)) term = 'upper';
+    else if (/下半(?:学)?年|下学期|春季学期/.test(text)) term = 'lower';
     else if (!validDate(date) || UNKNOWN.test(String(row.activity_name || '') + text)) term = 'unassigned';
     else if (config.vacation_months.includes(month)) term = 'vacation';
     else term = config.upper_months.includes(month) ? 'upper' : 'lower';
@@ -54,14 +54,14 @@ function classify(row) {
 function expressions(alias = 'l') {
   const config = rules();
   const year = `(EXTRACT(YEAR FROM ${alias}.activity_date)::int - CASE WHEN EXTRACT(MONTH FROM ${alias}.activity_date) < ${config.start_month} THEN 1 ELSE 0 END)`;
-  const periodYear = `substring(${alias}.activity_period from '(20[0-9]{2}-20[0-9]{2})')`;
+  const periodYear = `substring(translate(regexp_replace(${alias}.activity_period, '[[:space:]]', '', 'g'), '—–－', '---') from '(20[0-9]{2}-20[0-9]{2})')`;
   return {
     year: `COALESCE(${alias}.academic_year, ${periodYear}, ${year}::text || '-' || (${year} + 1)::text, '${LEGACY_PERIOD}')`,
     term: `COALESCE(${alias}.academic_term, CASE
+      WHEN COALESCE(${alias}.activity_period, '') ~ '(寒假|暑假|寒暑假|寒暑期|暑期|寒期)' THEN 'vacation'
+      WHEN COALESCE(${alias}.activity_period, '') ~ '(上半(学)?年|上学期|秋季学期)' THEN 'upper'
+      WHEN COALESCE(${alias}.activity_period, '') ~ '(下半(学)?年|下学期|春季学期)' THEN 'lower'
       WHEN ${alias}.activity_date IS NULL THEN 'unassigned'
-      WHEN COALESCE(${alias}.activity_period, '') ~ '(寒假|暑假|寒暑假|暑期|寒期)' THEN 'vacation'
-      WHEN COALESCE(${alias}.activity_period, '') ~ '(上半年|上学期|秋季学期)' THEN 'upper'
-      WHEN COALESCE(${alias}.activity_period, '') ~ '(下半年|下学期|春季学期)' THEN 'lower'
       WHEN (${alias}.activity_name || COALESCE(${alias}.activity_period, '')) ~ '(源表|未拆分|累计记录|累计未拆分)' THEN 'unassigned'
       WHEN EXTRACT(MONTH FROM ${alias}.activity_date)::int IN (${config.vacation_months.join(',')}) THEN 'vacation'
       WHEN EXTRACT(MONTH FROM ${alias}.activity_date)::int IN (${config.upper_months.join(',')}) THEN 'upper'

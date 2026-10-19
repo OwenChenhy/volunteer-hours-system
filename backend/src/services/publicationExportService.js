@@ -63,10 +63,13 @@ async function addGradeSheet(workbook, specifications, grade) {
 }
 
 function periodColumn(headers, record) {
-  // Unknown historical dates never inherit an activity column's semester label.
-  const year = record.classified_year || record.academic_year;
-  const term = record.classified_term || record.academic_term;
-  if (!academic.validYear(year) || !['upper', 'lower', 'vacation'].includes(term)) return null;
+  // Source year/semester categories are independent of the occurrence date.
+  const category = academic.classify(record);
+  const year = record.classified_year || category.academic_year;
+  const term = record.classified_term || category.academic_term;
+  if (!['upper', 'lower', 'vacation'].includes(term)) return null;
+  if (!academic.validYear(year)) return term === 'vacation'
+    ? headers.find(header => !/20\d{2}/.test(header.text) && /寒|暑/.test(header.text))?.column : null;
   const matchesTerm = text => term === 'vacation' ? /寒|暑/.test(text)
     : term === 'upper' ? /上半|上学期/.test(text) : /下半|下学期/.test(text);
   const exact = headers.find(header => header.text.replace(/\s/g, '').includes(year) && matchesTerm(header.text));
@@ -97,8 +100,11 @@ function personCells(specification, person) {
       if (!values.has(column)) values.set(column, []);
       values.get(column).push(detail(record));
     } else {
-      const year = record.classified_year || record.academic_year;
-      const label = academic.validYear(year) ? `${year}${academic.TERM_LABELS[record.classified_term || record.academic_term] || '未分期'}：` : '历史：';
+      const category = academic.classify(record);
+      const year = record.classified_year || category.academic_year;
+      const term = record.classified_term || category.academic_term;
+      const label = academic.validYear(year) ? `${year}${academic.TERM_LABELS[term] || '未分期'}：`
+        : term === 'vacation' ? '寒暑假（未注明学年）：' : '历史：';
       notes.push(label + detail(record));
     }
   }

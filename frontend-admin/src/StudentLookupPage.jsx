@@ -4,7 +4,7 @@ import { searchStudent, updateProblemLog } from './api';
 
 const terms = { upper: '上半年', lower: '下半年', vacation: '寒暑假补录', unassigned: '待确认累计' };
 const hours = (n) => Number(n || 0).toFixed(1);
-const legacyLabel = '2026年10月之前导入的活动';
+const legacyLabel = '未注明学年的历史记录';
 
 export default function StudentLookupPage() {
   const [mode, setMode] = useState('student_id');
@@ -82,8 +82,8 @@ export default function StudentLookupPage() {
           {student.historical_balances.map((row, index) => <tr key={row.id || index}><td>{row.record_kind === 'historical_balance' ? '成绩单核定差额' : '原表累计项'}</td><td>{hours(row.source_total_hours)} 小时</td><td>{hours(row.hours)} 小时</td></tr>)}
         </tbody></table></div>
       </section>}
-      <div className="table-wrap"><table className="data-table"><thead><tr>{['活动', '日期', '学年', '归属', '时长', '操作'].map((label) => <th key={label}>{label}</th>)}</tr></thead><tbody>
-        {(student.records || []).filter((row) => (!scopeYear || row.academic_year === scopeYear) && (!scopeTerm || row.academic_term === scopeTerm)).map((row) => <tr key={row.id || row.activity_code}><td>{row.activity_name}</td><td>{row.activity_time_label || row.activity_date || legacyLabel}</td><td>{row.academic_year === 'legacy' ? '历史导入' : row.academic_year || '待确认'}</td><td>{terms[row.academic_term] || '待确认'}</td><td>{hours(row.hours)}</td><td>{canEditResult && row.id && <button type="button" onClick={() => setEditing({ ...row, ...student, ...row, historical: !row.activity_date, academic_year: row.academic_year === 'legacy' ? '' : row.academic_year, student_id: student.student_id, student_name: student.student_name, college: student.college || '', grade: student.grade || '', note: '', sync_student_info: true })}>修改</button>}</td></tr>)}
+      <div className="table-wrap"><table className="data-table"><thead><tr>{['活动', '分类 / 日期', '学年', '归属', '时长', '操作'].map((label) => <th key={label}>{label}</th>)}</tr></thead><tbody>
+        {(student.records || []).filter((row) => (!scopeYear || row.academic_year === scopeYear) && (!scopeTerm || row.academic_term === scopeTerm)).map((row) => <tr key={row.id || row.activity_code}><td>{row.activity_name}</td><td>{row.activity_time_label || row.activity_date || legacyLabel}</td><td>{row.academic_year === 'legacy' ? '未注明学年' : row.academic_year || '待确认'}</td><td>{terms[row.academic_term] || '待确认'}</td><td>{hours(row.hours)}</td><td>{canEditResult && row.id && <button type="button" onClick={() => setEditing({ ...row, ...student, ...row, historical: !row.activity_date, academic_year: row.academic_year === 'legacy' ? '' : row.academic_year, student_id: student.student_id, student_name: student.student_name, college: student.college || '', grade: student.grade || '', note: '', sync_student_info: true })}>修改</button>}</td></tr>)}
       </tbody></table></div>
     </section>)}<div className="toolbar"><button disabled={loading || (result.page || 1) <= 1} onClick={() => load(result.page - 1)}>上一页</button><button disabled={loading || !result.truncated} onClick={() => load((result.page || 1) + 1)}>下一页</button></div></>}
   </section>;

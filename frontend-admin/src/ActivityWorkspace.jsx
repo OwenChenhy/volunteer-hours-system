@@ -275,7 +275,7 @@ export default function ActivityWorkspace({
           }} placeholder="活动名称或负责单位" /></Field><label className="inline-check"><input type="checkbox" checked={deleted} onChange={event => {
             setDeleted(event.target.checked);
             setPage(1);
-          }} />显示已删除活动</label><button onClick={load}>刷新列表</button></div><Panel title={`活动列表 · ${filtered.length}场`}><Table columns={['活动', '时间 / 学年', '负责单位', '名单进度', '状态', '操作']} rows={visible.map(value => [<strong>{value.name}</strong>, <span>{value.start_time ? localTime(value.start_time).replace('T', ' ') : '2026年10月之前导入的活动'}<small className="ux-muted">{value.academic_year === 'legacy' ? '历史导入' : value.academic_year} · {value.term_label}</small></span>, value.org_name || '未填写', `${value.record_count}人 · 待审${value.pending_count}`, value.deleted_at ? '已删除' : value.status === 'archived' ? '已归档' : '可填报', <div className="row-actions">{value.deleted_at ? <button onClick={() => setDialog({
+          }} />显示已删除活动</label><button onClick={load}>刷新列表</button></div><Panel title={`活动列表 · ${filtered.length}场`}><Table columns={['活动', '时间 / 学年', '负责单位', '名单进度', '状态', '操作']} rows={visible.map(value => [<strong>{value.name}</strong>, <span>{value.start_time ? localTime(value.start_time).replace('T', ' ') : '未注明具体日期'}<small className="ux-muted">{value.academic_year === 'legacy' ? '历史导入' : value.academic_year} · {value.term_label}</small></span>, value.org_name || '未填写', `${value.record_count}人 · 待审${value.pending_count}`, value.deleted_at ? '已删除' : value.status === 'archived' ? '已归档' : '可填报', <div className="row-actions">{value.deleted_at ? <button onClick={() => setDialog({
             action: 'restore',
             activity: value,
             title: '恢复活动',
@@ -296,7 +296,7 @@ export default function ActivityWorkspace({
           title: activity.status === 'archived' ? '恢复填报' : '归档活动',
           description: activity.status === 'archived' ? '恢复后可继续提交名单。' : '归档后停止继续填报，已有时长和审核记录保留。',
           confirm: '确认操作'
-        })}>{activity.status === 'archived' ? '恢复填报' : '归档'}</button></div>}><div className="ux-detail-grid"><p><strong>活动时间</strong>{activity.start_time ? `${localTime(activity.start_time).replace('T', ' ')} 至 ${localTime(activity.end_time).replace('T', ' ')}` : '2026年10月之前导入的活动'}</p><p><strong>负责单位</strong>{activity.org_name || '未填写'}</p><p><strong>学年 / 阶段</strong>{activity.academic_year === 'legacy' ? '历史导入' : activity.academic_year} / {activity.term_label}</p><p><strong>活动地点</strong>{activity.location || '未填写'}</p></div>{activity.description && <p>{activity.description}</p>}</Panel><div className="ux-progress-grid">{Object.entries({
+        })}>{activity.status === 'archived' ? '恢复填报' : '归档'}</button></div>}><div className="ux-detail-grid"><p><strong>活动时间</strong>{activity.start_time ? `${localTime(activity.start_time).replace('T', ' ')} 至 ${localTime(activity.end_time).replace('T', ' ')}` : '未注明具体日期'}</p><p><strong>负责单位</strong>{activity.org_name || '未填写'}</p><p><strong>学年 / 阶段</strong>{activity.academic_year === 'legacy' ? '历史导入' : activity.academic_year} / {activity.term_label}</p><p><strong>活动地点</strong>{activity.location || '未填写'}</p></div>{activity.description && <p>{activity.description}</p>}</Panel><div className="ux-progress-grid">{Object.entries({
           pending: '待审核',
           rejected: '需修正',
           waiting_publication: '通过待发布',
