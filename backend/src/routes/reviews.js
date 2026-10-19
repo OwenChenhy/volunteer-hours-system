@@ -7,9 +7,10 @@ const { authenticate } = require('../middlewares/auth');
 const { requireCapability, hasFullAccess } = require('../middlewares/rbac');
 const { writeAudit } = require('../services/auditService');
 const { normalizeCollegeName, isFormalCollegeName } = require('../utils/collegeNames');
+const { reviewState } = require('../services/reviewState');
 
 const DATASET_NAME = '2025-2026志愿者时长库3月公示';
-const PROBLEM_STATUSES = ['summary_conflict', 'summary_no_detail', 'supplement', 'reviewed'];
+const PROBLEM_STATUSES = ['summary_conflict', 'summary_no_detail', 'supplement', 'reviewed', 'archived_out_of_scope'];
 const OPEN_PROBLEM_STATUSES = ['summary_conflict', 'summary_no_detail', 'supplement'];
 
 function cleanCell(value) {
@@ -163,14 +164,15 @@ module.exports = async function (fastify, opts) {
     } = request.query;
 
     const params = [];
+    const state = reviewState('l');
     let where = "l.source = 'imported' AND l.status IN ('pending','approved','rejected')";
 
     if (type === 'unprocessed') {
       params.push(OPEN_PROBLEM_STATUSES);
-      where += ` AND l.import_detail_status = ANY($${params.length}::text[]) AND l.is_legacy_processed = false`;
+      where += ` AND l.import_detail_status = ANY($${params.length}::text[]) AND NOT ${state.processed}`;
     } else if (type !== 'all') {
       params.push(type);
-      where += ` AND l.import_detail_status = $${params.length}`;
+      where += ` AND ${state.type} = $${params.length}`;
     } else {
       params.push(PROBLEM_STATUSES);
       where += ` AND l.import_detail_status = ANY($${params.length}::text[])`;
@@ -201,6 +203,8 @@ module.exports = async function (fastify, opts) {
     const { rows } = await db.query(`
       SELECT
         l.*,
+        ${state.processed} AS is_legacy_processed,
+        ${state.type} AS review_resolution,
         b.filename AS batch_filename,
         b.note AS batch_note,
         b.created_at AS batch_created_at,

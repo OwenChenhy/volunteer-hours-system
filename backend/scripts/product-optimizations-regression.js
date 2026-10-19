@@ -192,7 +192,8 @@ async function main() {
     });
     assert.strictEqual(unprocessedReviews.statusCode, 200);
     assert(/l\.import_detail_status = ANY/i.test(unprocessedProblemSql), 'unprocessed problem logs should still filter by problem status');
-    assert(/l\.is_legacy_processed = false/i.test(unprocessedProblemSql), 'unprocessed problem logs should filter pending review state');
+    assert(/AND NOT \(COALESCE\(l\.is_legacy_processed/i.test(unprocessedProblemSql), 'unprocessed problem logs should exclude the effective processed state');
+    assert(/confirm_processed/.test(unprocessedProblemSql) && /archive_out_of_scope/.test(unprocessedProblemSql), 'explicit closures and scope archives must participate in review state');
 
     const sourceRow = await app.inject({
       method: 'GET',

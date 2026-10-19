@@ -1,5 +1,6 @@
 const db = require('../db');
 const { LEGACY_LABEL, profilesCTE } = require('./academicService');
+const { reviewState } = require('./reviewState');
 
 async function getOverview() {
   const stats = await db.query(`
@@ -7,12 +8,12 @@ async function getOverview() {
       COUNT(*) FILTER (WHERE status = 'pending') as pending_count,
       COUNT(*) FILTER (WHERE status = 'approved') as approved_count,
       COUNT(*) FILTER (WHERE status = 'rejected') as rejected_count,
-      COUNT(*) FILTER (WHERE source = 'imported' AND status IN ('pending','approved','rejected') AND is_legacy_processed = false) as legacy_todo_count,
+      COUNT(*) FILTER (WHERE ${reviewState('l').open}) as legacy_todo_count,
       COALESCE(SUM(hours) FILTER (WHERE status = 'approved'), 0) as total_hours,
       COUNT(*) as total_records,
       COUNT(DISTINCT student_id) FILTER (WHERE status = 'approved') as total_students,
       COUNT(DISTINCT COALESCE(activity_id::text, activity_name)) FILTER (WHERE status = 'approved') as activity_count
-    FROM volunteer_logs WHERE status IN ('pending','approved','rejected')
+    FROM volunteer_logs l WHERE status IN ('pending','approved','rejected')
   `);
   return stats.rows[0];
 }
@@ -78,21 +79,25 @@ async function getRankings() {
 }
 
 async function getProblemStats() {
+  const state = reviewState('l');
+  const classified = `WITH classified AS (SELECT l.*, ${state.type} AS review_type FROM volunteer_logs l)`;
   const [byStatus, trend] = await Promise.all([
     db.query(`
-      SELECT COALESCE(import_detail_status, 'normal') AS problem_type,
+      ${classified}
+      SELECT review_type AS problem_type,
              COUNT(*) AS record_count,
              COALESCE(SUM(hours), 0) AS total_hours
-      FROM volunteer_logs
+      FROM classified
       WHERE source = 'imported' AND status IN ('pending','approved','rejected')
-      GROUP BY COALESCE(import_detail_status, 'normal')
+      GROUP BY review_type
       ORDER BY record_count DESC
     `),
     db.query(`
+      ${classified}
       SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
-             COALESCE(import_detail_status, 'normal') AS problem_type,
+             review_type AS problem_type,
              COUNT(*) AS record_count
-      FROM volunteer_logs
+      FROM classified
       WHERE source = 'imported' AND status IN ('pending','approved','rejected')
       GROUP BY day, problem_type
       ORDER BY day DESC, problem_type
