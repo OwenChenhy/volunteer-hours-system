@@ -346,6 +346,7 @@ module.exports = async function (fastify, opts) {
         return reply.code(404).send({ message: '记录不存在' });
       }
       const before = beforeRes.rows[0];
+      if (['historical_balance','historical_cumulative'].includes(before.record_kind)) return reply.code(409).send({ message: '历史累计记录不能修改为活动；请根据原成绩单核对累计依据' });
       if (before.activity_id !== hint.activity_id) return reply.code(409).send({ message: '记录的关联活动已变化，请刷新后重试' });
       if (['withdrawn','voided'].includes(before.status)) return reply.code(409).send({ message: '记录已撤回或作废，请先恢复再编辑' });
       if (request.user.role === 'college_admin' && !request.user.org_name) return reply.code(403).send({ message: '账号未配置所属学院' });

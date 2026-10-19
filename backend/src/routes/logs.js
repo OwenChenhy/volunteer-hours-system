@@ -65,6 +65,9 @@ module.exports = async function (app) {
     });
     const params = [],
       filters = [];
+    if (request.query.record_kind && !['activity', 'historical_balance','historical_cumulative'].includes(request.query.record_kind)) return reply.code(400).send({message:'记录类型无效'});
+    params.push(request.query.record_kind || 'activity');
+    filters.push(`record_kind=$${params.length}`);
     for (const field of ['status', 'source', 'activity_id', 'student_id']) if (request.query[field]) {
       params.push(request.query[field]);
       filters.push(`${field}=$${params.length}`);
@@ -211,6 +214,7 @@ module.exports = async function (app) {
       const owns = hasCapability(request.user.role, 'logs:submit') && before.submitted_by === request.user.id;
       if (request.user.role === 'college_admin' && before.college !== normalizeCollegeName(request.user.org_name)) throw failure(403, '只能处理所属学院记录');
       if (!canReview && !owns) throw failure(403, '没有该记录的操作权限');
+      if (['historical_balance','historical_cumulative'].includes(before.record_kind)) throw failure(409, '历史累计记录不能按活动撤回、作废或恢复');
       if (restore) {
         if (!['withdrawn', 'voided'].includes(before.status)) throw failure(409, '记录未撤回或作废');
         if (before.status === 'voided' && !canReview) throw failure(403, '只有审核管理人员可以恢复已作废记录');

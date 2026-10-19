@@ -1,11 +1,13 @@
 const db = require('../db');
 const academic = require('./academicService');
+const { isHistoricalBalance, normalizeRecord } = require('./hourRecordService');
 
-const COLUMNS = 'id, student_id, student_name, college, grade, academic_year, academic_term, is_adjustment, activity_name, activity_date, activity_period, hours, source, import_detail_status, source_total_hours, created_at, status, reject_reason';
+const COLUMNS = 'id, student_id, student_name, college, grade, academic_year, academic_term, is_adjustment, record_kind, activity_name, activity_date, activity_period, hours, source, import_detail_status, source_total_hours, created_at, status, reject_reason';
 const key = (...values) => JSON.stringify(values);
 let loaded, loading, checkedAt = 0, generation = 0;
 
 function fingerprint(row) {
+  row = normalizeRecord(row);
   return key(...COLUMNS.split(', ').map(field => {
     const value = row[field];
     return value instanceof Date ? value.toISOString() : field === 'hours' ? Number(value) : value ?? null;
@@ -13,6 +15,7 @@ function fingerprint(row) {
 }
 
 function prepare(batch) {
+  batch = { ...batch, snapshot: { ...batch.snapshot, records: batch.snapshot.records.map(normalizeRecord) } };
   const people = new Map(), originals = new Map(), scopes = new Map();
   for (const row of batch.snapshot.records) {
     const identity = key(row.student_id, row.student_name);
@@ -118,7 +121,7 @@ function summary(state, options) {
 
 async function progress(state, studentId, studentName) {
   const records = (await db.query(`SELECT ${COLUMNS} FROM volunteer_logs WHERE student_id=$1 AND student_name=$2 ORDER BY created_at DESC, id`, [studentId, studentName])).rows;
-  return records.filter(row => state.originals.get(row.id) !== fingerprint(row)).map(row => ({ activity_name: row.activity_name, activity_date: row.activity_date, college: row.college, grade: row.grade, hours: Number(row.hours), status: row.status, status_label: row.status === 'approved' ? '审核通过，待统一发布' : row.status === 'rejected' ? '审核未通过' : row.status === 'withdrawn' ? '已撤回' : row.status === 'voided' ? (state.originals.has(row.id) ? '已作废，待统一发布更正' : '已作废') : '审核中', reject_reason: row.status === 'rejected' ? row.reject_reason : null }));
+  return records.filter(row => !isHistoricalBalance(row) && state.originals.get(row.id) !== fingerprint(row)).map(row => ({ activity_name: row.activity_name, activity_date: row.activity_date, college: row.college, grade: row.grade, hours: Number(row.hours), status: row.status, status_label: row.status === 'approved' ? '审核通过，待统一发布' : row.status === 'rejected' ? '审核未通过' : row.status === 'withdrawn' ? '已撤回' : row.status === 'voided' ? (state.originals.has(row.id) ? '已作废，待统一发布更正' : '已作废') : '审核中', reject_reason: row.status === 'rejected' ? row.reject_reason : null }));
 }
 
 async function status() {

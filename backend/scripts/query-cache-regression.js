@@ -33,7 +33,7 @@ const call = (input = identity, path = '') => app.inject({ method: 'POST', url: 
 const summaries = input => call({ ...identity, academic_year: '2026-2027', ...input }, '/summary');
 const keys = async kind => {
   const found = [];
-  for await (const page of observer.scanIterator({ MATCH: 'query:v1:' + kind + ':*' })) found.push(...page);
+  for await (const page of observer.scanIterator({ MATCH: 'query:v2:' + kind + ':*' })) found.push(...page);
   return found;
 };
 async function check(name, run) {

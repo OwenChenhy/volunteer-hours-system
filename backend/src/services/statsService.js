@@ -12,7 +12,7 @@ async function getOverview() {
       COALESCE(SUM(hours) FILTER (WHERE status = 'approved'), 0) as total_hours,
       COUNT(*) as total_records,
       COUNT(DISTINCT student_id) FILTER (WHERE status = 'approved') as total_students,
-      COUNT(DISTINCT COALESCE(activity_id::text, activity_name)) FILTER (WHERE status = 'approved') as activity_count
+      COUNT(DISTINCT COALESCE(activity_id::text, activity_name)) FILTER (WHERE status = 'approved' AND record_kind='activity') as activity_count
     FROM volunteer_logs l WHERE status IN ('pending','approved','rejected')
   `);
   return stats.rows[0];
@@ -32,7 +32,8 @@ async function getByCollege() {
 
 async function getByMonth() {
   const result = await db.query(`
-    SELECT CASE WHEN activity_date IS NULL THEN '${LEGACY_LABEL}'
+    SELECT CASE WHEN record_kind<>'activity' THEN '历史累计核定'
+           WHEN activity_date IS NULL THEN '${LEGACY_LABEL}'
            ELSE to_char(date_trunc('month', activity_date), 'YYYY-MM') END as month,
            SUM(hours) as total_hours,
            COUNT(*) as record_count
@@ -63,7 +64,7 @@ async function getRankings() {
              COUNT(*) AS record_count,
              COUNT(DISTINCT student_id) AS student_count
       FROM volunteer_logs
-      WHERE status = 'approved'
+      WHERE status = 'approved' AND record_kind='activity'
       GROUP BY activity_name
       ORDER BY record_count DESC, total_hours DESC
       LIMIT 50

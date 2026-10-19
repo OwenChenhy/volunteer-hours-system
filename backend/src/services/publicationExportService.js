@@ -3,6 +3,7 @@ const path = require('node:path');
 const ExcelJS = require('exceljs');
 const JSZip = require('jszip');
 const academic = require('./academicService');
+const { isHistoricalBalance } = require('./hourRecordService');
 const { normalizeCollegeName } = require('../utils/collegeNames');
 const manifest = require('../../templates/publication/manifest.json');
 const templateDirectory = path.join(__dirname, '../../templates/publication');
@@ -85,6 +86,12 @@ function personCells(specification, person) {
     年级: person.grade || '', 学号: String(person.student_id), 联系方式: '', 电话: '', 联系电话: '' };
   const values = new Map(), notes = [];
   for (const record of person.records) {
+    if (isHistoricalBalance(record)) {
+      notes.push(record.import_detail_status==='cumulative_reconciliation'
+        ? `成绩单核定累计：${Number(record.source_total_hours)}小时；与保留明细的差额${Number(record.hours)}小时已计入总时长（非活动）。`
+        : `原表累计项：${Number(record.hours)}小时，已计入总时长（未提供活动名称）。`);
+      continue;
+    }
     const column = periodColumn(headers, record);
     if (column) {
       if (!values.has(column)) values.set(column, []);
