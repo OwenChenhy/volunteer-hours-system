@@ -44,3 +44,7 @@ ALLOW_RESTORE=1 sh scripts/restore-postgres.sh backups/<verified-dump>.dump
 恢复后运行 `sh scripts/migrate-db.sh`、`python3 scripts/sync-supabase-database.py`，并核对主库、云端记录数及关键表摘要。同步脚本默认只 upsert；不要在仍需保留云端备份时使用 `--replace`。
 
 详细操作与 2026-09-28 恢复证据见 [运维流程.md](./运维流程.md) 和 [恢复记录](./恢复记录_2026-09-28.md)。
+
+## 历史数据的时间与分类
+
+“抹除时间戳”只清理占位的活动发生日期及起止时间。原表明确给出的学年、上半年、下半年和寒暑假分类仍须分别保存；日期为空不等于没有分类。公示Excel按这些分类落入对应原表栏目。未注明学年的寒暑假仍单列寒暑假，不猜测学年。成绩单差额和未拆分累计项继续单独记账，不编造活动名称或阶段。详见[分类恢复记录](docs/历史分类恢复_2026-10-19.md)和[公示Excel导出说明](docs/公示Excel导出.md)。

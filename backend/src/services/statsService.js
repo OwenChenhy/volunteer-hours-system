@@ -1,5 +1,5 @@
 const db = require('../db');
-const { LEGACY_LABEL, profilesCTE } = require('./academicService');
+const { profilesCTE } = require('./academicService');
 const { reviewState } = require('./reviewState');
 
 async function getOverview() {
@@ -33,7 +33,7 @@ async function getByCollege() {
 async function getByMonth() {
   const result = await db.query(`
     SELECT CASE WHEN record_kind<>'activity' THEN '历史累计核定'
-           WHEN activity_date IS NULL THEN '${LEGACY_LABEL}'
+           WHEN activity_date IS NULL THEN '未注明具体月份'
            ELSE to_char(date_trunc('month', activity_date), 'YYYY-MM') END as month,
            SUM(hours) as total_hours,
            COUNT(*) as record_count

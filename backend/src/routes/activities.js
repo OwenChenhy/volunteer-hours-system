@@ -49,7 +49,7 @@ function classified(row) {
   return {
     ...row,
     ...academic.classify(row),
-    activity_time_label: row.start_time ? row.activity_date : academic.LEGACY_LABEL,
+    activity_time_label: row.start_time ? row.activity_date : '未注明具体日期',
     academic_year_inferred: !row.academic_year,
     academic_term_inferred: !row.academic_term
   };
