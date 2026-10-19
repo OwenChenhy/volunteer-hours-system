@@ -1,6 +1,6 @@
 # Redis 学生查询缓存接入记录
 
-更新日期：2026-10-15。开发及验证已完成，等待用户审核 PR；生产尚未更新。
+更新日期：2026-10-19。PR #2 已同步最新 main 并完成兼容验证，等待用户审核；本 PR 尚未合并或发布。
 
 ## 目标与实际行为
 
@@ -45,6 +45,14 @@ Compose 中 Redis 保留既有 AOF 和数据卷，新增 `--maxmemory 128mb --ma
 
 在服务器开发目录可以用现有验证脚本重复运行：`python3 ux-checks/incoming/run_query_cache_checks.py after`。原有回归为同脚本的 `regressions` 参数；完整镜像及前端验证为 `python3 ux-checks/incoming/query_cache_browser.py`。
 
+## 2026-10-19 合并冲突修复
+
+main 在 PR #3 中新增了公示 Excel 导出，与本 PR 同时在 `backend/package.json` 的脚本列表末尾添加测试命令，导致 Git 无法自动合并。现已同时保留 `test:publication-export` 与 `test:query-cache`，完整保留 main 的 JSZip 依赖及锁文件；业务代码沿用两边已有实现。
+
+同步后的服务器隔离验证结果：Redis 专项 22/22、六组既有 npm 回归、公示集成、权限与资料 24/24、Excel 导出五组检查，以及查询端和管理端构建全部通过。导出测试初次因空测试库缺少当前公示快照而停止，补入 13 个学院、13 名合成学生、26 条记录和 39 小时的快照后，原测试完整通过；本次没有复制或使用生产学生数据。
+
+本轮记录见 [合并兼容验证](redis-query-cache-20261019/verification.json)。验证使用原有服务器依赖及专用测试容器，没有安装依赖、执行生产迁移或改动生产服务。
+
 ## 发布状态
 
-开发分支为 `codex/redis-query-cache-20261015`，基于已合并的 `27c0a908`。最终只读检查确认生产仍运行该版本，镜像仍为 `41faa309`；GitHub 当前无部署 webhook。完成 PR 后等待用户审核，不自动合并或发布。
+开发分支为 `codex/redis-query-cache-20261015`，初始基线为 `27c0a908`，2026-10-19 已同步 main 的 `96acf62c`。本次只读核对生产目录 HEAD 为 `96acf62c`，修复期间保持不变。PR #2 继续等待用户审核，不自动合并或发布。
