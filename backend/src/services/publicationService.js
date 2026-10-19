@@ -36,7 +36,7 @@ function prepare(batch) {
       return { ...row, rank, total_students: rows.length };
     }));
   }
-  return { batch, people, originals, scopes };
+  return { batch, people, originals, scopes, draft_revision: String(batch.source_revision) };
 }
 
 async function publish(userId, input, bootstrap = false) {
@@ -86,7 +86,7 @@ async function current() {
   if (!loading) loading = (async () => {
     const before = generation;
     let candidate = loaded;
-    const state = await db.query('SELECT publication_id FROM publication_state WHERE id = true');
+    const state = await db.query('SELECT publication_id, (SELECT revision::text FROM data_versions WHERE id=true) AS draft_revision FROM publication_state WHERE id = true');
     if (!state.rows.length) {
       const parts = new Intl.DateTimeFormat('en', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit' }).formatToParts(new Date());
       const month = `${parts.find(part => part.type === 'year').value}-${parts.find(part => part.type === 'month').value}`;
@@ -94,6 +94,7 @@ async function current() {
     } else if (loaded?.batch.id !== state.rows[0].publication_id) {
       candidate = prepare((await db.query('SELECT * FROM publication_batches WHERE id=$1', [state.rows[0].publication_id])).rows[0]);
     }
+    if (state.rows.length) candidate = { ...candidate, draft_revision: state.rows[0].draft_revision };
     if (generation === before) { loaded = candidate; checkedAt = Date.now(); }
     return loaded || candidate;
   })().finally(() => { loading = null; });

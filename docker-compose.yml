@@ -14,7 +14,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: volunteer-redis
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
     restart: unless-stopped
     volumes:
       - redis-data:/data

@@ -12,6 +12,7 @@
     "test:product": "node scripts/product-optimizations-regression.js",
     "test": "npm run test:smoke && npm run test:import && npm run test:security && npm run test:college && npm run test:product && npm run test:academic",
     "test:academic": "node scripts/academic-regression.js",
+    "test:query-cache": "node scripts/query-cache-regression.js",
     "test:ux": "node scripts/ux-regression.js",
     "test:publication": "node scripts/publication-regression.js",
     "test:startup": "node scripts/startup-regression.js",

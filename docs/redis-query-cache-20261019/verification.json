@@ -1,0 +1,33 @@
+{
+  "base_main": "96acf62c54e54eebcf7765323309f97ef502d8bd",
+  "original_pr_head": "fffb9850016978fcbbb6b3de69d4e513a3a90811",
+  "cache": {
+    "passed": 22,
+    "failed": 0
+  },
+  "checks_exit_codes": {
+    "npm-test": 0,
+    "publication_test": 0,
+    "ux_scope_review_test": 0,
+    "publication-export": 0,
+    "frontend-query-build": 0,
+    "frontend-admin-build": 0
+  },
+  "production_head": "96acf62c54e54eebcf7765323309f97ef502d8bd",
+  "completed_utc": "2026-10-19T04:12:38Z",
+  "export_fixture": {
+    "data": "synthetic",
+    "colleges": 13,
+    "students": 13,
+    "records": 26,
+    "hours": 39,
+    "initial_attempt": "missing current publication in a fresh isolated database; seeded synthetic snapshot and reran unchanged test"
+  },
+  "tested_backend_tree": "c7428590d77ac2f8a30bca2fba8193e9c7af1579",
+  "scope_checks": 24,
+  "publication_export_checks": 5,
+  "retained_scripts": [
+    "test:query-cache",
+    "test:publication-export"
+  ]
+}

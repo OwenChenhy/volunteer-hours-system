@@ -83,7 +83,7 @@ async function main() {
   const started = new Promise(resolve=>{ markRead=resolve; });
   db.query = async (sql,params) => {
     const result = await originalQuery(sql,params);
-    if (sql === 'SELECT publication_id FROM publication_state WHERE id = true') { markRead(); await blocked; }
+    if (sql.includes('FROM publication_state WHERE id = true')) { markRead(); await blocked; }
     return result;
   };
   try {

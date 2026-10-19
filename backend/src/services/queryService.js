@@ -2,6 +2,7 @@ const publication = require('./publicationService');
 const db = require('../db');
 const crypto = require('crypto');
 const academic = require('./academicService');
+const cache = require('../cache/redis');
 
 const LEGACY_PLACEHOLDER_PATTERN = /(源表|未拆分|拆分时长|拆分明细|已拆分|累计未拆分)/;
 
@@ -10,6 +11,16 @@ async function queryStudentLogs(student_id, student_name, college = null, state 
   const sId = student_id.trim();
   const sName = student_name.trim();
   state = state || await publication.current();
+  const cacheKey = publicCacheKey('student', state, [state.draft_revision, sId, sName, college, publication.meta(state).feedback_email]);
+  return cache.remember(cacheKey, () => loadStudentLogs(sId, sName, college, state));
+}
+
+function publicCacheKey(kind, state, scope) {
+  const digest = crypto.createHash('sha256').update(JSON.stringify(scope)).digest('hex');
+  return `query:v1:${kind}:${state.batch.id}:${digest}`;
+}
+
+async function loadStudentLogs(sId, sName, college, state) {
   const rows = (state.people.get(publication.identityKey(sId, sName)) || []).filter(row => !college || row.college === college);
   const progress = (await publication.progress(state, sId, sName)).filter(row => !college || row.college === college);
   if (!rows.length && !progress.length) return null;
@@ -140,6 +151,7 @@ function makeVerificationCode(studentId, studentName, totalHours, recordCount, b
 
 module.exports = {
   queryStudentLogs,
+  publicCacheKey,
   queryLogs: queryStudentLogs,
   getDataVersion,
   getDraftDataVersion,
