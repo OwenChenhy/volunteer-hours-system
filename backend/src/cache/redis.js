@@ -93,6 +93,20 @@ async function deleteByPrefix(prefix) {
   })) || 0;
 }
 
+async function getStatus() {
+  const configured = Boolean(process.env.REDIS_URL);
+  const keys = configured ? await execute(client => client.dbSize()) : null;
+  return {
+    status: !configured ? 'disabled' : keys === null ? 'warning' : 'ok',
+    ok: keys !== null,
+    configured,
+    message: !configured ? '未配置 Redis，查询使用数据库'
+      : keys === null ? '连接异常，查询已回退数据库' : '连接正常',
+    keys,
+    checked_at: new Date().toISOString()
+  };
+}
+
 async function close() {
   const client = await clientPromise;
   if (client?.isOpen) client.destroy();
@@ -100,4 +114,4 @@ async function close() {
   retryAt = 0;
 }
 
-module.exports = { getJson, setJson, remember, deleteByPrefix, close };
+module.exports = { getJson, setJson, remember, deleteByPrefix, getStatus, close };

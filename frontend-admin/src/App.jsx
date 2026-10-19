@@ -762,8 +762,8 @@ function OpsStatusPage() {
 
   const cards = buildOpsCards(status);
   const checklist = buildOpsChecklist(status);
-  const healthyCount = cards.filter((card) => card.status === "ok" || card.status === "enabled").length;
-  const attentionCount = cards.filter((card) => ["warn", "error", "disabled", "unknown"].includes(card.status)).length;
+  const healthyCount = cards.filter((card) => ["ok", "enabled", "healthy"].includes(card.status)).length;
+  const attentionCount = cards.length - healthyCount;
 
   return (
     <section className="dashboard-section">

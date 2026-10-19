@@ -1,0 +1,59 @@
+{
+  "base_commit": "d5dae49d0e78fe04b18a7d697d0608bf420de882",
+  "api_before": {
+    "passed": 22,
+    "failed": 6
+  },
+  "api_after": {
+    "passed": 28,
+    "failed": 0
+  },
+  "browser_before": {
+    "passed": 2,
+    "failed": 1
+  },
+  "browser_after": {
+    "passed": 6,
+    "failed": 0
+  },
+  "browser_checks": [
+    {
+      "name": "real operations UI displays healthy Redis and zero keys",
+      "passed": true
+    },
+    {
+      "name": "refresh displays the actual changed key count",
+      "passed": true
+    },
+    {
+      "name": "Redis outage appears as a warning and is included in attention metrics",
+      "passed": true
+    },
+    {
+      "name": "operations UI recovers after Redis restarts without restarting the backend",
+      "passed": true
+    },
+    {
+      "name": "missing configuration is shown explicitly instead of pending integration",
+      "passed": true
+    },
+    {
+      "name": "375px operations UI has no overflow, API errors or JavaScript errors",
+      "passed": true
+    }
+  ],
+  "regressions_and_admin_build": {
+    "npm-test": 0,
+    "admin-build": 0
+  },
+  "tested_files_sha256": {
+    "backend/src/cache/redis.js": "055e5d5c0a341b68beaabb9fb05e67c1f1aace2ec5c8a00cc2d1d57bebb75458",
+    "backend/src/routes/ops.js": "5ab5086064a1cdfdda06aff3ce3cc74c4ab82932b6d3bba487253c480a99ab50",
+    "backend/scripts/query-cache-regression.js": "09b06c4352efc1026ca94758cb8bec01050ffc620811ce774c2b8e74517cb32c",
+    "frontend-admin/src/App.jsx": "4058e1f783b04d4c878a9242a69281b619627a21e094d85a3ff61f682aa84518"
+  },
+  "isolated_database": "127.0.0.1:55436/redis_query_test",
+  "isolated_redis": "127.0.0.1:16381",
+  "production_unchanged": true,
+  "completed_utc": "2026-10-19T09:52:48.708957+00:00"
+}
