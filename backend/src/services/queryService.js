@@ -2,6 +2,7 @@ const publication = require('./publicationService');
 const db = require('../db');
 const crypto = require('crypto');
 const academic = require('./academicService');
+const { isHistoricalBalance, historicalBalance } = require('./hourRecordService');
 const cache = require('../cache/redis');
 
 const LEGACY_PLACEHOLDER_PATTERN = /(源表|未拆分|拆分时长|拆分明细|已拆分|累计未拆分)/;
@@ -17,7 +18,7 @@ async function queryStudentLogs(student_id, student_name, college = null, state 
 
 function publicCacheKey(kind, state, scope) {
   const digest = crypto.createHash('sha256').update(JSON.stringify(scope)).digest('hex');
-  return `query:v1:${kind}:${state.batch.id}:${digest}`;
+  return `query:v2:${kind}:${state.batch.id}:${digest}`;
 }
 
 async function loadStudentLogs(sId, sName, college, state) {
@@ -46,7 +47,8 @@ async function loadStudentLogs(sId, sName, college, state) {
     academic_rules: academic.rules(),
     data_version: dataVersion,
     verification_code: makeVerificationCode(sId, sName, totalHours, rows.length, dataVersion?.batch_id),
-    records: publishedRows.map((r, index) => toPublicRecord(r, index)),
+    records: publishedRows.filter(row => !isHistoricalBalance(row)).map((r, index) => toPublicRecord(r, index)),
+    historical_balances: publishedRows.filter(isHistoricalBalance).map(historicalBalance),
     review_progress: progress
   };
 
@@ -60,6 +62,7 @@ function toPublicRecord(row, index) {
 
   return {
     id: row.id,
+    record_kind: 'activity',
     ...academic.classify(row),
     is_adjustment: Boolean(row.is_adjustment),
     activity_code: `HD-${String(index + 1).padStart(3, '0')}`,
@@ -123,7 +126,7 @@ async function getDraftDataVersion() {
 async function queryDraftStudentLogs(studentId, studentName, college = null) {
   const params = [studentId.trim(), studentName.trim()];
   if (college) params.push(college);
-  const rows = (await db.query(`SELECT id,student_id,student_name,college,grade,academic_year,academic_term,is_adjustment,activity_name,activity_date,activity_period,hours,source,import_detail_status,source_total_hours,created_at
+  const rows = (await db.query(`SELECT id,student_id,student_name,college,grade,academic_year,academic_term,is_adjustment,record_kind,activity_name,activity_date,activity_period,hours,source,import_detail_status,source_total_hours,created_at
     FROM volunteer_logs WHERE student_id = $1 AND student_name = $2 AND status = 'approved' ${college ? 'AND college = $3' : ''} ORDER BY activity_date DESC,created_at DESC`, params)).rows;
   if (!rows.length) return null;
   const profile = academic.studentProfile(rows);
@@ -137,7 +140,9 @@ async function queryDraftStudentLogs(studentId, studentName, college = null) {
   }
   const totalHours = rows.reduce((sum, row) => sum + Math.round(Number(row.hours) * 10), 0) / 10;
   const version = await getDraftDataVersion();
-  return { student_id: studentId.trim(), student_name: studentName.trim(), college: profile.college, grade: profile.grade, total_hours: totalHours, academic_summaries: summaries, academic_rules: academic.rules(), data_version: version, verification_code: makeVerificationCode(studentId, studentName, totalHours, rows.length, version.revision), records: rows.map((row, index) => ({ ...toPublicRecord(row, index), activity_name: row.activity_name })) };
+  return { student_id: studentId.trim(), student_name: studentName.trim(), college: profile.college, grade: profile.grade, total_hours: totalHours, academic_summaries: summaries, academic_rules: academic.rules(), data_version: version, verification_code: makeVerificationCode(studentId, studentName, totalHours, rows.length, version.revision),
+    records: rows.filter(row => !isHistoricalBalance(row)).map((row, index) => ({ ...toPublicRecord(row, index), activity_name: row.activity_name })),
+    historical_balances: rows.filter(isHistoricalBalance).map(historicalBalance) };
 }
 
 function makeVerificationCode(studentId, studentName, totalHours, recordCount, batchId) {

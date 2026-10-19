@@ -43,6 +43,7 @@ function normalizeResult(data) {
       grade: student.grade || '未填写'
     },
     academic_summaries: data.academic_summaries || [],
+    historical_balances: data.historical_balances || [],
     review_progress: data.review_progress || [],
     total_hours: Number(data.total_hours || student.total_hours || 0),
     data_version: dataVersion,
@@ -439,6 +440,11 @@ function App() {
             <p className="batch-note">批次备注：{result.data_version.note}</p>
           )}
 
+          {result.historical_balances.length > 0 && <section className="academic-summary" aria-label="历史累计核定">
+            <h3>历史成绩单累计</h3>
+            {result.historical_balances.map((record, index) => <p key={index}>{record.record_kind === 'historical_balance' ? '成绩单核定累计' : '原表累计项'}：<strong>{formatHours(record.record_kind === 'historical_balance' ? record.source_total_hours : record.hours)} 小时</strong></p>)}
+            <p>历史累计已计入上方总时长；成绩单核定累计包含此前时长，不再与历史明细相加。之后发布的活动继续累加。</p>
+          </section>}
           <AcademicSummary result={result} />
           <p className="data-note">正式时长与排名以统一发布的累计库为准。新活动审核完成后统一公示；重新查询可查看本人最新审核进度。</p>
           <section className="academic-summary" aria-label="本人活动审核进度">
@@ -503,7 +509,7 @@ function App() {
             {filteredRecords.length === 0 ? (
               <div className="empty-state">
                 <strong>当前筛选条件下没有活动记录</strong>
-                <span>请调整活动关键词、来源或时间筛选；查询总结果仍保留在上方汇总中。</span>
+                <span>{result.records.length ? '请调整活动关键词、来源或时间筛选；查询总结果仍保留在上方汇总中。' : '历史累计依据见上方成绩单记录。'}</span>
               </div>
             ) : (
               groupedRecords.map((group) => (

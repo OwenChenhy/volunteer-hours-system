@@ -93,7 +93,8 @@ fastify.get('/meta', { config: sharedCampusLimit }, async (request, reply) => {
       }
 
       reply.header('Cache-Control', 'no-store');
-      return { ...result, records: result.records.map(({ id, ...record }) => record) };
+      return { ...result, records: result.records.map(({ id, ...record }) => record),
+        historical_balances: result.historical_balances.map(({ id, ...record }) => record) };
     } catch (err) {
       fastify.log.error(err);
       return reply.code(500).send({ message: '服务器内部错误' });
