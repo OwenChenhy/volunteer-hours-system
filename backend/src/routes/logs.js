@@ -2,6 +2,7 @@ const db = require('../db');
 const crypto = require('crypto');
 const ExcelJS = require('exceljs');
 const publication = require('../services/publicationService');
+const { reviewState } = require('../services/reviewState');
 const {
   authenticate
 } = require('../middlewares/auth');
@@ -69,7 +70,7 @@ module.exports = async function (app) {
       filters.push(`${field}=$${params.length}`);
     }
     if (request.query.include_inactive !== 'true' && !request.query.status) filters.push("status IN ('pending','approved','rejected')");
-    if (request.query.legacy_unprocessed === 'true') filters.push("source='imported' AND is_legacy_processed=false");
+    if (request.query.legacy_unprocessed === 'true') filters.push(reviewState('volunteer_logs').open);
     if (request.user.role === 'college_admin') {
       if (!request.user.org_name) return reply.code(403).send({
         message: '账号未配置所属学院'
@@ -82,7 +83,8 @@ module.exports = async function (app) {
     }
     const limit = Math.max(1, Math.min(Number(request.query.limit) || 200, 1000));
     params.push(limit);
-    const rows = (await db.query(`SELECT * FROM volunteer_logs WHERE ${filters.length ? filters.join(' AND ') : 'true'} ORDER BY created_at DESC,id LIMIT $${params.length}`, params)).rows;
+    const stateSql = reviewState('volunteer_logs');
+    const rows = (await db.query(`SELECT *, ${stateSql.processed} AS is_legacy_processed, ${stateSql.type} AS review_resolution FROM volunteer_logs WHERE ${filters.length ? filters.join(' AND ') : 'true'} ORDER BY created_at DESC,id LIMIT $${params.length}`, params)).rows;
     const state = await publication.current();
     return rows.map(row => ({
       ...row,

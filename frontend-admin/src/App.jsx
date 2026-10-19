@@ -113,6 +113,7 @@ const problemTypeLabels = {
   summary_no_detail: "累计记录",
   summary_conflict: "活动明细冲突待复核",
   reviewed: "已复核确认",
+  archived_out_of_scope: "范围外归档",
   duplicate_record: "库内重复",
   duplicate_in_file: "同文件重复",
   duplicate_in_request: "同批次重复",
@@ -489,22 +490,22 @@ function ProblemReviewPage({ go }) {
   }, [filters, problemRows]);
 
   const todoCount = problemRows.filter((row) => row.is_legacy_processed !== true).length;
-  const conflictCount = problemRows.filter((row) => getRowProblemType(row) === "summary_conflict").length;
+  const conflictCount = problemRows.filter((row) => row.is_legacy_processed !== true && getRowProblemType(row) === "summary_conflict").length;
 
   return (
     <section className="dashboard-section">
-      <SectionTitle title="问题数据复核中心" subtitle="集中复核导入明细拆分、差额补充和冲突累计记录" onRefresh={load} />
+      <SectionTitle title="问题数据复核中心" subtitle="查看待处理问题、复核结论与范围外归档记录" onRefresh={load} />
       <Notice type="success" message={message} />
       <Notice type="error" message={error} />
 
       <div className="metric-grid">
-        <Metric label="待复核问题" value={problemRows.length} />
-        <Metric label="未标记处理" value={todoCount} />
-        <Metric label="冲突累计" value={conflictCount} />
+        <Metric label="待复核问题" value={todoCount} />
+        <Metric label="已处理及归档" value={problemRows.length - todoCount} />
+        <Metric label="待处理冲突" value={conflictCount} />
         <Metric label="当前展示" value={visibleRows.length} />
       </div>
 
-      <Panel title="问题状态分布" action={<button type="button" onClick={() => go("import")}><UploadCloud size={16} />去导入</button>}>
+      <Panel title="复核状态分布" action={<button type="button" onClick={() => go("import")}><UploadCloud size={16} />去导入</button>}>
         <DataTable
           columns={["问题状态", "记录数", "总时长"]}
           rows={statusRows.map((row) => [
@@ -1138,11 +1139,11 @@ function normalizeProblemStatusRows(stats) {
 }
 
 function getRowProblemType(row) {
-  return row?.import_detail_status || row?.detail_status || row?.problem_type || row?.problem_status || "normal";
+  return row?.review_resolution || row?.import_detail_status || row?.detail_status || row?.problem_type || row?.problem_status || "normal";
 }
 
 function isProblemType(type) {
-  return Boolean(type && type !== "normal" && type !== "parsed");
+  return ["summary_conflict", "summary_no_detail", "supplement", "reviewed", "archived_out_of_scope"].includes(type);
 }
 
 function isProblemDataRow(row) {
@@ -1154,7 +1155,8 @@ function problemTypeLabel(type) {
 }
 
 function problemTone(type) {
-  if (type === "normal" || type === "parsed") return "green";
+  if (type === "normal" || type === "parsed" || type === "reviewed") return "green";
+  if (type === "archived_out_of_scope") return "muted";
   if (type === "summary_conflict" || type === "duplicate_record") return "red";
   if (!type || type === "unknown") return "muted";
   return "orange";

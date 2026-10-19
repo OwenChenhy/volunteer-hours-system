@@ -1,0 +1,25 @@
+{
+  "original_head": "bf30472659fc1a6b3651d5fcaab326beee4ca1dc",
+  "base_main": "1fe11e3a6f7fd9e1057df0ec338a4271563915c6",
+  "production_head": "1fe11e3a6f7fd9e1057df0ec338a4271563915c6",
+  "cache": {
+    "passed": 22,
+    "failed": 0
+  },
+  "scope_checks": 24,
+  "checks_exit_codes": {
+    "npm-test": 0,
+    "publication_test": 0,
+    "ux_scope_review_test": 0,
+    "review-closure": 0,
+    "frontend-admin-build": 0
+  },
+  "completed_utc": "2026-10-19T04:47:16Z",
+  "review_closure_fixture": "fresh isolated database with synthetic administrator and preinitialized empty publication; initial attempt stopped on first-read publication bootstrap, unchanged test passed after initialization",
+  "tested_backend_tree": "b551b53168e5d389fa5dad21faa2e0fb6e8cab96",
+  "retained_scripts": [
+    "test:query-cache",
+    "test:publication-export",
+    "test:review-closure"
+  ]
+}
